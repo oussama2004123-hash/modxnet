@@ -24,6 +24,11 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3334;
 
+// ========== HEALTH CHECK (must be first, before any middleware) ==========
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
 // ========== MIDDLEWARE ==========
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
 
@@ -72,6 +77,7 @@ function getGoogleCallbackURL() {
   return '/api/auth/google/callback';
 }
 
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -105,6 +111,9 @@ passport.use(new GoogleStrategy({
     done(err, null);
   }
 }));
+} else {
+  console.warn('WARNING: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set. Google OAuth disabled.');
+}
 
 // Auth middleware helper
 function requireAuth(req, res, next) {
@@ -1788,11 +1797,6 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 
 // Serve uploaded images
 app.use('/uploads', express.static(uploadDir));
-
-// ========== HEALTH CHECK ==========
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime() });
-});
 
 // ========== STATIC FILES ==========
 // Serve static files AFTER API routes so API takes priority
