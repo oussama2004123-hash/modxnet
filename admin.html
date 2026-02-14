@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ModXnet Admin Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <!-- Auth Gate -->
+  <div id="authGate" class="auth-gate">
+    <div class="auth-gate-inner">
+      <div class="auth-logo"><i class="fas fa-shield-alt"></i></div>
+      <h2>Admin Access Required</h2>
+      <p>Log in with your admin account to manage ModXnet.</p>
+      <a href="/?action=login" class="auth-gate-btn"><i class="fas fa-sign-in-alt"></i> Go to Login</a>
+    </div>
+  </div>
+
+  <!-- Admin Shell -->
+  <div id="adminShell" class="admin-shell" style="display:none;">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo"><i class="fas fa-gamepad"></i> <span>Mod<b>X</b>net</span></div>
+        <div class="sidebar-badge">ADMIN</div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Overview</div>
+        <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-home"></i> Home</a>
+
+        <div class="nav-section-label">Content</div>
+        <a href="#" class="nav-item" data-tab="games"><i class="fas fa-gamepad"></i> Games</a>
+        <a href="#" class="nav-item" data-tab="trash"><i class="fas fa-trash-restore"></i> Trash <span class="trash-count-badge" id="trashBadge" style="display:none">0</span></a>
+
+        <div class="nav-section-label">Monetization</div>
+        <a href="#" class="nav-item" data-tab="adblue"><i class="fas fa-ad"></i> Ad Config</a>
+
+        <div class="nav-section-label">Community</div>
+        <a href="#" class="nav-item" data-tab="users"><i class="fas fa-users"></i> Users</a>
+        <a href="#" class="nav-item" data-tab="reviews"><i class="fas fa-star"></i> Reviews</a>
+        <a href="#" class="nav-item" data-tab="comments"><i class="fas fa-comments"></i> Comments</a>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="/" class="nav-item"><i class="fas fa-arrow-left"></i> Back to Website</a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="topbar">
+        <button class="sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+        <h1 id="pageTitle">Home</h1>
+        <div class="topbar-user" id="topbarUser"></div>
+      </header>
+
+      <!-- Tab: Dashboard -->
+      <section class="tab-content active" id="tab-dashboard">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="quick-actions">
+          <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+          <div class="actions-row">
+            <button class="action-btn" onclick="switchTab('games')"><i class="fas fa-gamepad"></i> Manage Games</button>
+            <button class="action-btn" onclick="switchTab('adblue')"><i class="fas fa-ad"></i> Ad Settings</button>
+            <button class="action-btn" onclick="switchTab('users')"><i class="fas fa-users"></i> Manage Users</button>
+            <button class="action-btn" onclick="switchTab('trash')"><i class="fas fa-trash-restore"></i> View Trash</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Games (Unified) -->
+      <section class="tab-content" id="tab-games">
+        <!-- Game List View -->
+        <div id="gamesListView">
+          <div class="tab-header">
+            <h2><i class="fas fa-gamepad"></i> Games</h2>
+            <p class="tab-desc">Manage everything about your games — homepage card and game page in one place.</p>
+            <button class="primary-btn" id="addGameBtn"><i class="fas fa-plus"></i> Add New Game</button>
+          </div>
+          <div class="games-card-grid" id="gamesGrid"></div>
+        </div>
+
+        <!-- Game Editor View (hidden by default) -->
+        <div id="gameEditorView" style="display:none">
+          <div class="editor-toolbar">
+            <button class="cancel-btn" id="editorBackBtn"><i class="fas fa-arrow-left"></i> Back to Games</button>
+            <h3 id="editorTitle">Add New Game</h3>
+            <div class="editor-actions">
+              <a href="#" target="_blank" id="editorPreviewLink" class="action-btn" style="display:none"><i class="fas fa-eye"></i> Preview</a>
+              <button class="save-btn" id="editorSaveAllBtn"><i class="fas fa-save"></i> Save &amp; Publish</button>
+            </div>
+          </div>
+
+          <!-- Auto Fetch Bar -->
+          <div class="autofetch-bar">
+            <div class="autofetch-input-wrap">
+              <i class="fas fa-search"></i>
+              <input type="text" id="fetchGameName" placeholder="Type a game name to auto-fill all details...">
+            </div>
+            <button type="button" class="autofetch-btn" id="fetchGameBtn">
+              <i class="fas fa-magic"></i><i class="fas fa-spinner fa-spin"></i> <span>Auto Fetch</span>
+            </button>
+            <button type="button" class="ai-generate-btn" id="aiGenerateBtn">
+              <i class="fas fa-robot"></i><i class="fas fa-spinner fa-spin"></i> <span>AI Generate</span>
+            </button>
+          </div>
+          <div class="autofetch-status" id="fetchStatus"></div>
+          <div class="autofetch-alts" id="fetchAlternatives"></div>
+
+          <!-- Section 1: Game Card (Homepage) -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-id-card"></i> Homepage Card</h4>
+              <small class="editor-section-hint">This info appears on the homepage game list</small>
+            </div>
+            <input type="hidden" id="gameId">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Game Name *</label>
+                <input type="text" id="gameTitle" required placeholder="e.g. GTA V Mobile">
+              </div>
+              <div class="form-group">
+                <label>Folder Name *</label>
+                <input type="text" id="gameSlug" required placeholder="e.g. GTA-5-Mobile">
+                <small class="form-hint">URL path: /GTA-5-Mobile/ — No spaces, use dashes.</small>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Card Picture (Homepage)</label>
+              <div class="image-input-row">
+                <input type="text" id="gameImageUrl" placeholder="Paste image URL or upload">
+                <label class="upload-btn"><i class="fas fa-upload"></i><input type="file" id="gameImageFile" accept="image/*" style="display:none"></label>
+              </div>
+              <div class="image-preview" id="gameImagePreview"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Game Type</label>
+                <input type="text" id="gameCategory" placeholder="e.g. racing, action, openworld">
+                <small class="form-hint">Separate types with spaces.</small>
+              </div>
+              <div class="form-group">
+                <label>Short ID</label>
+                <input type="text" id="gameDataGame" placeholder="e.g. gta5, beamng">
+                <small class="form-hint">Used for search filters.</small>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Version</label>
+                <input type="text" id="gameVersion" placeholder="e.g. v1.0">
+              </div>
+              <div class="form-group">
+                <label>Release Date</label>
+                <input type="text" id="gameReleaseDate" placeholder="e.g. Feb 2025">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Star Rating (1-5)</label>
+                <input type="number" id="gameRating" min="1" max="5" step="0.5" value="4.0">
+              </div>
+              <div class="form-group">
+                <label>Page Link</label>
+                <input type="text" id="gameLink" placeholder="Auto-filled from folder name">
+                <small class="form-hint">Leave empty to auto-generate.</small>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Position (order on homepage)</label>
+                <input type="number" id="gameSortOrder" value="0">
+                <small class="form-hint">Lower number = shows first.</small>
+              </div>
+              <div class="form-group">
+                <label>Show on Homepage?</label>
+                <select id="gameVisible">
+                  <option value="1">Yes — Visible</option>
+                  <option value="0">No — Hidden</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Game Page Images -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-images"></i> Game Page Images</h4>
+              <small class="editor-section-hint">These images appear on the game's detail page</small>
+            </div>
+            <div class="img-editor-grid">
+              <!-- Game Cover -->
+              <div class="img-editor-card">
+                <label class="img-editor-label"><i class="fas fa-panorama"></i> Game Cover</label>
+                <div class="img-editor-preview" id="imgCoverPreview">
+                  <img src="" alt="No cover" id="imgCoverImg">
+                  <div class="img-editor-empty" id="imgCoverEmpty"><i class="fas fa-image"></i> No cover image</div>
+                </div>
+                <div class="img-editor-input-row">
+                  <input type="text" id="imgCoverUrl" placeholder="Paste cover URL..." class="img-editor-url">
+                  <label class="img-upload-btn" title="Upload image"><i class="fas fa-upload"></i><input type="file" accept="image/*" class="img-upload-input" data-target="imgCoverUrl"></label>
+                </div>
+              </div>
+              <!-- Game Logo -->
+              <div class="img-editor-card">
+                <label class="img-editor-label"><i class="fas fa-gamepad"></i> Game Logo</label>
+                <div class="img-editor-preview img-editor-preview-logo" id="imgLogoPreview">
+                  <img src="" alt="No logo" id="imgLogoImg">
+                  <div class="img-editor-empty" id="imgLogoEmpty"><i class="fas fa-image"></i> No logo</div>
+                </div>
+                <div class="img-editor-input-row">
+                  <input type="text" id="imgLogoUrl" placeholder="Paste logo URL..." class="img-editor-url">
+                  <label class="img-upload-btn" title="Upload image"><i class="fas fa-upload"></i><input type="file" accept="image/*" class="img-upload-input" data-target="imgLogoUrl"></label>
+                </div>
+              </div>
+            </div>
+            <!-- Screenshots -->
+            <div class="img-editor-screenshots">
+              <div class="img-editor-ss-header">
+                <label class="img-editor-label"><i class="fas fa-th"></i> Screenshots</label>
+                <button type="button" class="img-add-ss-btn" id="imgAddSsBtn"><i class="fas fa-plus"></i> Add</button>
+              </div>
+              <div class="img-editor-ss-grid" id="imgSsGrid"></div>
+            </div>
+          </div>
+
+          <!-- Section 3: Features -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-list-check"></i> Features</h4>
+              <small class="editor-section-hint">Bullet points shown on the game page</small>
+            </div>
+            <div class="features-editor" id="featuresEditor">
+              <!-- Dynamically filled -->
+            </div>
+            <button type="button" class="img-add-ss-btn" id="addFeatureBtn" style="margin-top:10px"><i class="fas fa-plus"></i> Add Feature</button>
+          </div>
+
+          <!-- Section 4: Ad Config (Content Locker) -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-ad"></i> Content Locker (AdBlueMedia)</h4>
+              <small class="editor-section-hint">Set the "it" and "key" values for this game's download buttons</small>
+            </div>
+            <div class="adblue-inline-editor" id="adblueInlineEditor">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>IT (Offer ID) <span class="required">*</span></label>
+                  <input type="number" id="editorAdblueIt" placeholder="e.g. 4455572">
+                </div>
+                <div class="form-group">
+                  <label>Key <span class="required">*</span></label>
+                  <input type="text" id="editorAdblueKey" placeholder="e.g. e7e4f">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Variable Name</label>
+                  <input type="text" id="editorAdblueVar" placeholder="PKiWi_Ojz_wYrvyc" value="PKiWi_Ojz_wYrvyc">
+                  <small class="form-hint">The JS variable name used by AdBlueMedia (usually don't change)</small>
+                </div>
+                <div class="form-group">
+                  <label>Script URL</label>
+                  <input type="text" id="editorAdblueScript" placeholder="https://da4talg8ap14y.cloudfront.net/..." value="https://da4talg8ap14y.cloudfront.net/5b1c47d.js">
+                  <small class="form-hint">The AdBlueMedia JS file URL</small>
+                </div>
+              </div>
+              <div id="adblueInlineStatus" style="margin-top:6px;font-size:0.8rem;color:var(--text2)"></div>
+            </div>
+          </div>
+
+          <!-- Section 5: Votes & Engagement -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-chart-bar"></i> Votes &amp; Engagement</h4>
+              <small class="editor-section-hint">Set vote count, rating, and generate fake reviews &amp; comments</small>
+            </div>
+            <div class="engagement-editor">
+              <!-- Votes Row -->
+              <div class="votes-editor-row">
+                <div class="form-row" style="margin-bottom:12px">
+                  <div class="form-group">
+                    <label><i class="fas fa-star" style="color:#ffd700;margin-right:4px"></i> Page Rating</label>
+                    <input type="number" id="editorPageRating" value="4.5" min="1" max="5" step="0.1">
+                    <small class="form-hint">Displayed rating on the game page (1.0 - 5.0)</small>
+                  </div>
+                  <div class="form-group">
+                    <label><i class="fas fa-users" style="color:var(--primary);margin-right:4px"></i> Vote Count</label>
+                    <input type="number" id="editorVoteCount" value="0" min="0">
+                    <small class="form-hint">Number of votes shown (e.g. 10367 = "10,367 votes")</small>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+                  <button type="button" class="action-btn" id="randomizeVotesBtn" style="font-size:0.78rem;padding:6px 12px">
+                    <i class="fas fa-dice"></i> Randomize Votes
+                  </button>
+                  <span id="votesPreview" style="font-size:0.8rem;color:var(--text2)"></span>
+                </div>
+              </div>
+              <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 14px">
+              <!-- Reviews & Comments Row -->
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Number of Reviews</label>
+                  <input type="number" id="engagementReviewCount" value="8" min="1" max="20">
+                </div>
+                <div class="form-group">
+                  <label>Number of Comments</label>
+                  <input type="number" id="engagementCommentCount" value="6" min="1" max="20">
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
+                <button type="button" class="ai-generate-btn" id="generateEngagementBtn" style="margin:0">
+                  <i class="fas fa-robot"></i><i class="fas fa-spinner fa-spin"></i> <span>Generate Reviews &amp; Comments</span>
+                </button>
+                <label style="font-size:0.78rem;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer">
+                  <input type="checkbox" id="autoEngagementCheck" checked style="accent-color:var(--primary)"> Auto-generate on new game save
+                </label>
+              </div>
+              <div id="engagementStatus" style="margin-top:8px;font-size:0.8rem;color:var(--text2)"></div>
+            </div>
+          </div>
+
+          <!-- Section 6: HTML Source Code (collapsible) -->
+          <div class="editor-section" id="htmlEditorSection" style="display:none">
+            <details class="html-editor-toggle" open>
+              <summary><i class="fas fa-code"></i> Game Page HTML Source Code</summary>
+              <div class="editor-files" id="editorFiles"></div>
+              <textarea id="editorTextarea" class="code-editor" spellcheck="false"></textarea>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Trash -->
+      <section class="tab-content" id="tab-trash">
+        <div class="tab-header">
+          <h2><i class="fas fa-trash-restore"></i> Trash</h2>
+          <p class="tab-desc">Deleted games go here. You can restore them or delete forever.</p>
+        </div>
+        <!-- Game Card Trash -->
+        <h4 style="color:var(--text2);margin:16px 0 10px;font-size:0.85rem"><i class="fas fa-id-card" style="margin-right:6px;color:var(--primary)"></i> Game Cards</h4>
+        <table class="data-table">
+          <thead><tr><th>Picture</th><th>Game Name</th><th>Deleted On</th><th>Actions</th></tr></thead>
+          <tbody id="trashBody"></tbody>
+        </table>
+        <!-- Game Page Trash -->
+        <h4 style="color:var(--text2);margin:24px 0 10px;font-size:0.85rem"><i class="fas fa-file-code" style="margin-right:6px;color:var(--primary)"></i> Game Page Folders</h4>
+        <div id="pageTrashGrid" style="display:grid;gap:8px"></div>
+      </section>
+
+      <!-- Tab: Ad Config -->
+      <section class="tab-content" id="tab-adblue">
+        <div class="tab-header">
+          <h2><i class="fas fa-ad"></i> Ad Config (AdBlueMedia)</h2>
+          <p class="tab-desc">Change the "it" and "key" values for each game's content locker.</p>
+        </div>
+        <div class="adblue-cards" id="adblueCards"></div>
+      </section>
+
+      <!-- Tab: Users -->
+      <section class="tab-content" id="tab-users">
+        <div class="tab-header">
+          <h2><i class="fas fa-users"></i> Users</h2>
+          <span class="count-badge" id="usersCount">0</span>
+          <button class="action-btn" id="downloadUsersBtn" style="margin-left:auto"><i class="fas fa-download"></i> Download Users</button>
+        </div>
+        <div class="users-stats" id="usersStats"></div>
+        <table class="data-table">
+          <thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Type</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </section>
+
+      <!-- User Edit Modal -->
+      <div class="modal-overlay" id="userEditModal">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="userEditTitle">Edit User</h3>
+            <button class="modal-close" onclick="closeUserEditModal()"><i class="fas fa-times"></i></button>
+          </div>
+          <form id="userEditForm" class="modal-form">
+            <input type="hidden" id="userEditId">
+            <div style="text-align:center;margin-bottom:12px">
+              <div style="width:64px;height:64px;border-radius:50%;border:2px solid var(--primary);overflow:hidden;margin:0 auto 8px;background:var(--surface)">
+                <img id="userEditAvatarPreview" src="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+              </div>
+              <div class="form-group">
+                <label>Avatar URL</label>
+                <input type="text" id="userEditAvatar" placeholder="https://...">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="userEditUsername" required minlength="2">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="userEditEmail" required>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="cancel-btn" onclick="closeUserEditModal()">Cancel</button>
+              <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Tab: Reviews -->
+      <section class="tab-content" id="tab-reviews">
+        <div class="tab-header">
+          <h2><i class="fas fa-star"></i> Reviews</h2>
+          <span class="count-badge" id="reviewsCount">0</span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Game</th><th>Stars</th><th>What they said</th><th>Mood</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="reviewsBody"></tbody>
+        </table>
+      </section>
+
+      <!-- Tab: Comments -->
+      <section class="tab-content" id="tab-comments">
+        <div class="tab-header">
+          <h2><i class="fas fa-comments"></i> Comments</h2>
+          <span class="count-badge" id="commentsCount">0</span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Game</th><th>What they said</th><th>Mood</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="commentsBody"></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <!-- AdBlue Edit Modal -->
+  <div class="modal-overlay" id="adblueModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="adblueModalTitle">Edit Ad Config</h3>
+        <button class="modal-close" onclick="closeAdblueModal()"><i class="fas fa-times"></i></button>
+      </div>
+      <form id="adblueForm" class="modal-form">
+        <input type="hidden" id="adblueGameSlug">
+        <div class="form-group">
+          <label>Game</label>
+          <input type="text" id="adblueSlugDisplay" disabled>
+        </div>
+        <div class="form-group">
+          <label>Variable Name</label>
+          <input type="text" id="adblueVarName" placeholder="PKiWi_Ojz_wYrvyc">
+          <small class="form-hint">The JavaScript variable name used by AdBlueMedia.</small>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>IT (Offer ID)</label>
+            <input type="number" id="adblueItValue" placeholder="4455572">
+          </div>
+          <div class="form-group">
+            <label>Key</label>
+            <input type="text" id="adblueKeyValue" placeholder="e7e4f">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Script URL</label>
+          <input type="text" id="adblueScriptUrl" placeholder="https://da4talg8ap14y.cloudfront.net/...">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="cancel-btn" onclick="closeAdblueModal()">Cancel</button>
+          <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="admin-toast" id="adminToast"></div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
