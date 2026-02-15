@@ -330,11 +330,12 @@ app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
 });
 
 // ========== CONTACT FORM ==========
-// Try port 587 (STARTTLS) first — Railway blocks port 465 (SSL)
+// Gmail SMTP — force IPv4 (Railway doesn't support IPv6 outbound)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
+  family: 4,
   auth: {
     user: process.env.SMTP_EMAIL,
     pass: process.env.SMTP_APP_PASSWORD
