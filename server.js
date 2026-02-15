@@ -331,12 +331,19 @@ app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
 
 // ========== CONTACT FORM ==========
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.SMTP_EMAIL,
     pass: process.env.SMTP_APP_PASSWORD
   }
 });
+
+// Verify SMTP connection on startup
+transporter.verify()
+  .then(() => console.log('SMTP connection verified - contact form ready'))
+  .catch(err => console.error('SMTP connection FAILED:', err.message));
 
 app.post('/api/contact', async (req, res) => {
   try {
@@ -374,8 +381,11 @@ app.post('/api/contact', async (req, res) => {
 
     res.json({ success: true, message: 'Message sent successfully!' });
   } catch (err) {
-    console.error('Contact email error:', err);
-    res.status(500).json({ error: 'Failed to send message. Please try again later.' });
+    console.error('Contact email error:', err.code, err.message);
+    let errorMsg = 'Failed to send message. Please try again later.';
+    if (err.code === 'EAUTH') errorMsg = 'Email authentication failed. Please contact the admin.';
+    if (err.code === 'ESOCKET') errorMsg = 'Email server connection failed. Please try again.';
+    res.status(500).json({ error: errorMsg });
   }
 });
 
