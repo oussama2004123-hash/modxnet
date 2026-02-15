@@ -330,20 +330,27 @@ app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
 });
 
 // ========== CONTACT FORM ==========
+// Try port 587 (STARTTLS) first — Railway blocks port 465 (SSL)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.SMTP_EMAIL,
     pass: process.env.SMTP_APP_PASSWORD
-  }
+  },
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000
 });
 
 // Verify SMTP connection on startup
 transporter.verify()
-  .then(() => console.log('SMTP connection verified - contact form ready'))
-  .catch(err => console.error('SMTP connection FAILED:', err.message));
+  .then(() => console.log('SMTP connection verified (port 587) - contact form ready'))
+  .catch(err => console.error('SMTP connection FAILED:', err.code, err.message));
 
 app.post('/api/contact', async (req, res) => {
   try {
