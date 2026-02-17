@@ -41,7 +41,6 @@
         <div class="nav-section-label">Community</div>
         <a href="#" class="nav-item" data-tab="users"><i class="fas fa-users"></i> Users</a>
         <a href="#" class="nav-item" data-tab="reviews"><i class="fas fa-star"></i> Reviews</a>
-        <a href="#" class="nav-item" data-tab="comments"><i class="fas fa-comments"></i> Comments</a>
       </nav>
       <div class="sidebar-footer">
         <a href="/" class="nav-item"><i class="fas fa-arrow-left"></i> Back to Website</a>
@@ -275,7 +274,7 @@
           <div class="editor-section">
             <div class="editor-section-header">
               <h4><i class="fas fa-chart-bar"></i> Votes &amp; Engagement</h4>
-              <small class="editor-section-hint">Set vote count, rating, and generate fake reviews &amp; comments</small>
+              <small class="editor-section-hint">Set vote count, rating, and generate fake reviews</small>
             </div>
             <div class="engagement-editor">
               <!-- Votes Row -->
@@ -300,20 +299,16 @@
                 </div>
               </div>
               <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 14px">
-              <!-- Reviews & Comments Row -->
+              <!-- Reviews Row -->
               <div class="form-row">
                 <div class="form-group">
                   <label>Number of Reviews</label>
                   <input type="number" id="engagementReviewCount" value="8" min="1" max="20">
                 </div>
-                <div class="form-group">
-                  <label>Number of Comments</label>
-                  <input type="number" id="engagementCommentCount" value="6" min="1" max="20">
-                </div>
               </div>
               <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
                 <button type="button" class="ai-generate-btn" id="generateEngagementBtn" style="margin:0">
-                  <i class="fas fa-robot"></i><i class="fas fa-spinner fa-spin"></i> <span>Generate Reviews &amp; Comments</span>
+                  <i class="fas fa-robot"></i><i class="fas fa-spinner fa-spin"></i> <span>Generate Reviews</span>
                 </button>
                 <label style="font-size:0.78rem;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer">
                   <input type="checkbox" id="autoEngagementCheck" checked style="accent-color:var(--primary)"> Auto-generate on new game save
@@ -420,17 +415,6 @@
         </table>
       </section>
 
-      <!-- Tab: Comments -->
-      <section class="tab-content" id="tab-comments">
-        <div class="tab-header">
-          <h2><i class="fas fa-comments"></i> Comments</h2>
-          <span class="count-badge" id="commentsCount">0</span>
-        </div>
-        <table class="data-table">
-          <thead><tr><th>User</th><th>Game</th><th>What they said</th><th>Mood</th><th>Date</th><th>Actions</th></tr></thead>
-          <tbody id="commentsBody"></tbody>
-        </table>
-      </section>
     </main>
   </div>
 

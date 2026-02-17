@@ -349,8 +349,7 @@ body {
     border-bottom: none;
 }
 
-.add-review-btn,
-.add-comment-btn {
+.add-review-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -369,21 +368,18 @@ body {
     font-family: inherit;
 }
 
-.add-review-btn:active,
-.add-comment-btn:active {
+.add-review-btn:active {
     transform: scale(0.98);
 }
 
-.reviews-list,
-.comments-list {
+.reviews-list {
     list-style: none;
     display: flex;
     flex-direction: column;
     gap: 16px;
 }
 
-.review-item,
-.comment-item {
+.review-item {
     background: var(--light);
     border-radius: 12px;
     padding: 16px;
@@ -397,8 +393,7 @@ body {
     margin-bottom: 8px;
 }
 
-.review-author,
-.comment-author {
+.review-author {
     font-weight: 600;
     font-size: 14px;
     color: var(--white);
@@ -413,28 +408,16 @@ body {
     color: rgba(255,255,255,0.2);
 }
 
-.review-text,
-.comment-text {
+.review-text {
     font-size: 14px;
     line-height: 1.5;
     color: var(--text);
     margin: 0 0 8px;
 }
 
-.review-date,
-.comment-date {
+.review-date {
     font-size: 12px;
     color: var(--text-muted);
-}
-
-/* Comments Section */
-.comments-section {
-    margin-bottom: 24px;
-}
-
-.comment-item .comment-author {
-    display: block;
-    margin-bottom: 6px;
 }
 
 /* Screenshots Section */

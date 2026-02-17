@@ -1,6 +1,6 @@
 /**
  * ModXnet Game Page Interactions
- * Handles reviews, comments, and auth state for all game pages.
+ * Handles reviews and auth state for all game pages.
  * Shows a professional login modal when guests try to post.
  */
 (function() {
@@ -13,9 +13,7 @@
 
   var currentUser = null;
   var reviewsList = document.getElementById('reviewsList');
-  var commentsList = document.getElementById('commentsList');
   var addReviewBtn = document.getElementById('addReviewBtn');
-  var addCommentBtn = document.getElementById('addCommentBtn');
 
   // ========== INJECT STYLES ==========
   var css = document.createElement('style');
@@ -126,7 +124,7 @@
     var existing = document.getElementById('loginPromptOverlay');
     if (existing) existing.remove();
 
-    var actionText = action === 'review' ? 'leave a review' : 'post a comment';
+    var actionText = 'leave a review';
 
     var overlay = document.createElement('div');
     overlay.className = 'login-prompt-overlay';
@@ -225,25 +223,6 @@
     }).join('');
   }
 
-  // ========== RENDER COMMENTS ==========
-  function renderComments(comments) {
-    if (!commentsList) return;
-    if (!comments || comments.length === 0) {
-      // Keep static HTML content if API returns nothing
-      if (commentsList.children.length === 0) {
-        commentsList.innerHTML = '<li class="no-items-msg">No comments yet. Start the conversation!</li>';
-      }
-      return;
-    }
-    commentsList.innerHTML = comments.map(function(c) {
-      return '<li class="comment-item">' +
-        '<span class="comment-author">' + escapeHtml(c.username) + '</span>' +
-        '<p class="comment-text">' + escapeHtml(c.text) + '</p>' +
-        '<span class="comment-date">' + timeAgo(c.created_at) + '</span>' +
-      '</li>';
-    }).join('');
-  }
-
   // ========== FETCH DATA ==========
   function loadReviews() {
     fetch('/api/reviews/' + encodeURIComponent(gameSlug))
@@ -253,16 +232,6 @@
         // If empty, keep the existing static HTML reviews
       })
       .catch(function() {}); // On error, keep static content
-  }
-
-  function loadComments() {
-    fetch('/api/comments/' + encodeURIComponent(gameSlug))
-      .then(function(r) { return r.json(); })
-      .then(function(comments) {
-        if (comments && comments.length > 0) renderComments(comments);
-        // If empty, keep the existing static HTML comments
-      })
-      .catch(function() {});
   }
 
   // ========== REVIEW FORM ==========
@@ -351,57 +320,6 @@
     return form;
   }
 
-  // ========== COMMENT FORM ==========
-  function createCommentForm() {
-    var form = document.createElement('div');
-    form.className = 'interaction-form';
-    form.id = 'commentForm';
-
-    form.innerHTML =
-      '<textarea id="commentTextInput" placeholder="Share your thoughts..."></textarea>' +
-      '<div class="form-actions">' +
-        '<button class="form-submit-btn" id="submitCommentBtn"><i class="fas fa-paper-plane"></i> Post Comment</button>' +
-        '<button class="form-cancel-btn" id="cancelCommentBtn">Cancel</button>' +
-      '</div>';
-
-    var section = addCommentBtn.closest('.comments-section');
-    var headerRow = section.querySelector('.section-header-row');
-    headerRow.insertAdjacentElement('afterend', form);
-
-    form.querySelector('#submitCommentBtn').addEventListener('click', function() {
-      var text = form.querySelector('#commentTextInput').value.trim();
-      if (text.length < 1) { showFormError(form, 'Comment cannot be empty'); return; }
-
-      var btn = this;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
-
-      fetch('/api/comments/' + encodeURIComponent(gameSlug), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text })
-      })
-      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-      .then(function(res) {
-        if (res.ok && res.data.success) {
-          renderComments(res.data.comments);
-          form.classList.remove('open');
-          form.querySelector('#commentTextInput').value = '';
-        } else {
-          showFormError(form, res.data.error || 'Failed to post comment');
-        }
-      })
-      .catch(function() { showFormError(form, 'Network error. Please try again.'); })
-      .finally(function() { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Post Comment'; });
-    });
-
-    form.querySelector('#cancelCommentBtn').addEventListener('click', function() {
-      form.classList.remove('open');
-    });
-
-    return form;
-  }
-
   // Small inline error message for forms
   function showFormError(form, msg) {
     var existing = form.querySelector('.form-error-msg');
@@ -427,14 +345,11 @@
 
     // Load data from API (keeps static content as fallback)
     loadReviews();
-    loadComments();
   }
 
   function setupButtons() {
     var reviewForm = null;
-    var commentForm = null;
 
-    // Override old click handlers by cloning buttons
     if (addReviewBtn) {
       var newReviewBtn = addReviewBtn.cloneNode(true);
       addReviewBtn.parentNode.replaceChild(newReviewBtn, addReviewBtn);
@@ -447,21 +362,6 @@
         }
         if (!reviewForm) reviewForm = createReviewForm();
         reviewForm.classList.toggle('open');
-      });
-    }
-
-    if (addCommentBtn) {
-      var newCommentBtn = addCommentBtn.cloneNode(true);
-      addCommentBtn.parentNode.replaceChild(newCommentBtn, addCommentBtn);
-      addCommentBtn = newCommentBtn;
-
-      addCommentBtn.addEventListener('click', function() {
-        if (!currentUser) {
-          showLoginPrompt('comment');
-          return;
-        }
-        if (!commentForm) commentForm = createCommentForm();
-        commentForm.classList.toggle('open');
       });
     }
   }

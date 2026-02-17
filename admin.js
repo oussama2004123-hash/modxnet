@@ -59,7 +59,7 @@
   }
 
   // ===== TAB NAVIGATION =====
-  var tabTitles = { dashboard:'Home', games:'Games', trash:'Trash', adblue:'Ad Config', users:'Users', reviews:'Reviews', comments:'Comments' };
+  var tabTitles = { dashboard:'Home', games:'Games', trash:'Trash', adblue:'Ad Config', users:'Users', reviews:'Reviews' };
 
   window.switchTab = function(tab) {
     document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
@@ -75,7 +75,6 @@
     else if (tab === 'adblue') loadAdblue();
     else if (tab === 'users') loadUsers();
     else if (tab === 'reviews') loadReviews();
-    else if (tab === 'comments') loadComments();
     $('sidebar').classList.remove('open');
   };
 
@@ -91,8 +90,7 @@
       $('statsGrid').innerHTML =
         '<div class="stat-card"><div class="stat-icon users"><i class="fas fa-users"></i></div><div class="stat-info"><h4>' + s.users + '</h4><p>Users</p></div></div>' +
         '<div class="stat-card"><div class="stat-icon games"><i class="fas fa-gamepad"></i></div><div class="stat-info"><h4>' + s.games + '</h4><p>Games</p></div></div>' +
-        '<div class="stat-card"><div class="stat-icon reviews"><i class="fas fa-star"></i></div><div class="stat-info"><h4>' + s.reviews + '</h4><p>Reviews</p></div></div>' +
-        '<div class="stat-card"><div class="stat-icon comments"><i class="fas fa-comments"></i></div><div class="stat-info"><h4>' + s.comments + '</h4><p>Comments</p></div></div>';
+        '<div class="stat-card"><div class="stat-icon reviews"><i class="fas fa-star"></i></div><div class="stat-info"><h4>' + s.reviews + '</h4><p>Reviews</p></div></div>';
     } catch (e) {}
   }
 
@@ -276,21 +274,17 @@
         }
       } catch(e) {}
 
-      // Load engagement status (review + comment counts)
+      // Load engagement status (review count)
       try {
         var revRes = await fetch('/api/reviews/' + encodeURIComponent(slug), {
           credentials: 'same-origin', headers: { 'Accept': 'application/json' }
         });
-        var comRes = await fetch('/api/comments/' + encodeURIComponent(slug), {
-          credentials: 'same-origin', headers: { 'Accept': 'application/json' }
-        });
-        var revCount = 0, comCount = 0;
+        var revCount = 0;
         if (revRes.ok) { var r = await revRes.json(); revCount = r.length; }
-        if (comRes.ok) { var c = await comRes.json(); comCount = c.length; }
-        if (revCount > 0 || comCount > 0) {
-          $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> This game has ' + revCount + ' reviews and ' + comCount + ' comments';
+        if (revCount > 0) {
+          $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> This game has ' + revCount + ' reviews';
         } else {
-          $('engagementStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> No reviews or comments yet — click Generate to add some';
+          $('engagementStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> No reviews yet — click Generate to add some';
         }
       } catch(e) {
         $('engagementStatus').innerHTML = '';
@@ -347,8 +341,7 @@
       updateVotesPreview();
       // Reset engagement
       $('engagementReviewCount').value = 8;
-      $('engagementCommentCount').value = 6;
-      $('engagementStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> Reviews and comments will be auto-generated when you save';
+      $('engagementStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> Reviews will be auto-generated when you save';
     }
 
     renderImageEditor();
@@ -932,12 +925,12 @@
             body: JSON.stringify({
               gameName: title,
               reviewCount: parseInt($('engagementReviewCount').value) || 8,
-              commentCount: parseInt($('engagementCommentCount').value) || 6
+              commentCount: 0
             })
           });
           if (engRes.ok) {
             var engData = await engRes.json();
-            $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Generated ' + engData.reviews_created + ' reviews + ' + engData.comments_created + ' comments' + (engData.ai_used ? ' (AI)' : ' (templates)');
+            $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Generated ' + engData.reviews_created + ' reviews' + (engData.ai_used ? ' (AI)' : ' (templates)');
           }
         } catch(e) { /* engagement generation failed, non-critical */ }
       }
@@ -985,7 +978,7 @@
     btn.disabled = true;
     btn.querySelector('.fa-robot').style.display = 'none';
     btn.querySelector('.fa-spin').style.display = 'inline-block';
-    $('engagementStatus').innerHTML = '<i class="fas fa-spinner fa-spin" style="color:var(--primary)"></i> Generating reviews and comments with AI...';
+    $('engagementStatus').innerHTML = '<i class="fas fa-spinner fa-spin" style="color:var(--primary)"></i> Generating reviews with AI...';
 
     try {
       var res = await fetch('/api/admin/games/' + encodeURIComponent(slug) + '/generate-engagement', {
@@ -995,13 +988,13 @@
         body: JSON.stringify({
           gameName: title || slug.replace(/-/g, ' '),
           reviewCount: parseInt($('engagementReviewCount').value) || 8,
-          commentCount: parseInt($('engagementCommentCount').value) || 6
+          commentCount: 0
         })
       });
       if (res.ok) {
         var data = await res.json();
-        $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Generated ' + data.reviews_created + ' reviews + ' + data.comments_created + ' comments' + (data.ai_used ? ' (DeepSeek AI)' : ' (templates)') + ' — Total: ' + data.total_reviews + ' reviews, ' + data.total_comments + ' comments';
-        toast('Engagement generated! ' + data.reviews_created + ' reviews + ' + data.comments_created + ' comments');
+        $('engagementStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Generated ' + data.reviews_created + ' reviews' + (data.ai_used ? ' (DeepSeek AI)' : ' (templates)') + ' — Total: ' + data.total_reviews + ' reviews';
+        toast('Reviews generated! ' + data.reviews_created + ' reviews');
       } else {
         var err = await res.json();
         $('engagementStatus').innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ff4444"></i> ' + (err.error || 'Failed to generate');
@@ -1266,7 +1259,7 @@
   });
 
   window.removeUser = function(id, name) {
-    if (!confirm('Delete user "' + name + '"?\nAll their reviews and comments will also be removed.')) return;
+    if (!confirm('Delete user "' + name + '"?\nAll their reviews will also be removed.')) return;
     api('/api/admin/users/' + id, { method: 'DELETE' }).then(function() { toast('User removed'); loadUsers(); });
   };
 
@@ -1321,33 +1314,6 @@
   window.removeReview = function(id) {
     if (!confirm('Delete this review?')) return;
     api('/api/admin/reviews/' + id, { method: 'DELETE' }).then(function() { toast('Review removed'); loadReviews(); });
-  };
-
-  // ===========================================================================
-  // ===== COMMENTS ============================================================
-  // ===========================================================================
-  async function loadComments() {
-    try {
-      var comments = await api('/api/admin/comments');
-      $('commentsCount').textContent = comments.length;
-      var html = '';
-      comments.forEach(function(c) {
-        html += '<tr>' +
-          '<td><strong>' + escHtml(c.username) + '</strong></td>' +
-          '<td style="font-size:0.82rem">' + escHtml(c.game_slug) + '</td>' +
-          '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escAttr(c.text) + '">' + escHtml(c.text) + '</td>' +
-          '<td class="sentiment-' + c.sentiment + '">' + c.sentiment + '</td>' +
-          '<td style="font-size:0.78rem;color:var(--text3)">' + formatDate(c.created_at) + '</td>' +
-          '<td><button class="danger-btn" onclick="removeComment(' + c.id + ')"><i class="fas fa-trash"></i></button></td>' +
-        '</tr>';
-      });
-      $('commentsBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:30px">No comments yet</td></tr>';
-    } catch (e) {}
-  }
-
-  window.removeComment = function(id) {
-    if (!confirm('Delete this comment?')) return;
-    api('/api/admin/comments/' + id, { method: 'DELETE' }).then(function() { toast('Comment removed'); loadComments(); });
   };
 
   // ===== INIT =====
