@@ -32,10 +32,8 @@ app.get('/health', (req, res) => {
 // ========== MIDDLEWARE ==========
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
 
-// Trust Railway's reverse proxy for secure cookies
-if (isProduction) {
-  app.set('trust proxy', 1);
-}
+// Trust reverse proxy (Cloudflare, Nginx, Railway) for correct req.protocol and client IP
+app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
@@ -70,10 +68,15 @@ passport.deserializeUser((id, done) => {
 });
 
 // Google OAuth Strategy
-// Dynamically resolves callback URL so it works on both Railway default domain and custom domains
+// Resolves callback URL for production (VPS/modxnet.com) and dev. Must be full https URL for production.
 function getGoogleCallbackURL() {
   if (process.env.GOOGLE_CALLBACK_URL) return process.env.GOOGLE_CALLBACK_URL;
-  if (process.env.RAILWAY_PUBLIC_DOMAIN) return 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN + '/api/auth/google/callback';
+  const base = process.env.SITE_URL || process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (base) {
+    const host = base.replace(/^https?:\/\//, '').split('/')[0];
+    return 'https://' + host + '/api/auth/google/callback';
+  }
+  // Dev fallback: relative path (Passport resolves from request host)
   return '/api/auth/google/callback';
 }
 
@@ -1816,21 +1819,25 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 // Serve uploaded images
 app.use('/uploads', express.static(uploadDir));
 
-// ========== STATIC FILES ==========
-// Serve static files AFTER API routes so API takes priority
+// ========== STATIC FILES (after all /api routes) ==========
+// Order: API routes already defined above → static files → SPA fallback last
 app.use(express.static(path.join(__dirname), {
   extensions: ['html'],
   index: 'index.html'
 }));
 
-// Fallback: serve index.html for unmatched routes
-app.get('/{*path}', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// SPA fallback: index.html for non-API routes only. Never override /api/*.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(__dirname, 'index.html'), (err) => {
+    if (err) next(err);
+  });
 });
 
 // ========== START SERVER ==========
 app.listen(PORT, '0.0.0.0', () => {
-  const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost:' + PORT;
-  const protocol = process.env.RAILWAY_PUBLIC_DOMAIN ? 'https' : 'http';
+  const siteUrl = process.env.SITE_URL || process.env.GOOGLE_CALLBACK_URL;
+  let domain = process.env.RAILWAY_PUBLIC_DOMAIN || (siteUrl ? siteUrl.replace(/^https?:\/\//, '').split('/')[0] : null) || 'localhost:' + PORT;
+  const protocol = (domain && domain !== 'localhost:' + PORT) ? 'https' : 'http';
   console.log('ModXnet server running on ' + protocol + '://' + domain);
 });
