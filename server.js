@@ -1827,7 +1827,7 @@ app.use(express.static(path.join(__dirname), {
 }));
 
 // SPA fallback: index.html for non-API routes only. Never override /api/*.
-app.use((req, res, next) => {
+app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   res.sendFile(path.join(__dirname, 'index.html'), (err) => {
     if (err) next(err);
