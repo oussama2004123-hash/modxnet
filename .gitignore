@@ -15,3 +15,6 @@ Thumbs.db
 .vscode/
 .idea/
 .cursor/
+deploy-remote.sh
+deploy.ps1
+fix-pm2.sh
