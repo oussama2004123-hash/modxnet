@@ -88,23 +88,51 @@
     
     .google-login-btn {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 8px;
-      font-size: 0.9rem;
-      color: #0a0a0a;
-      background: #00ffcc;
+      justify-content: center;
+      gap: 4px;
+      background: transparent;
       border: none;
-      border-radius: var(--border-radius);
-      padding: 10px 16px;
+      padding: 2px 6px;
       cursor: pointer;
       transition: var(--transition);
-      font-weight: 600;
-      font-family: inherit;
+      text-decoration: none;
     }
     
-    .google-login-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
+    .login-icon-circle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: var(--white);
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transition: var(--transition);
+    }
+    
+    .login-icon-circle i {
+      color: #00ffcc;
+      font-size: 1.15rem;
+      line-height: 1;
+    }
+    
+    .login-btn-text {
+      color: var(--white);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+    
+    .google-login-btn:hover .login-icon-circle {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 255, 204, 0.4);
+    }
+    
+    .google-login-btn:hover .login-btn-text {
+      color: var(--primary);
     }
     
     /* Mobile Menu */
@@ -210,6 +238,20 @@
     /* Games Container */
     .games-container {
       padding: 0 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Grid/List views for game cards */
+    .games-container.view-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .games-container.view-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -391,6 +433,91 @@
       user-select: none;
       touch-action: manipulation;
     }
+
+    /* Grid card — matches mobile store layout: padded card, square rounded image, centered text */
+    .games-container.view-grid .game-card {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 14px 14px 12px;
+      overflow: visible;
+      border-radius: 14px;
+      background: #1a1a1a;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+      min-height: 0;
+    }
+
+    .games-container.view-grid .game-icon {
+      display: block;
+      width: 100%;
+      align-self: stretch;
+      aspect-ratio: 1 / 1;
+      height: auto;
+      max-height: none;
+      margin: 0;
+      border-radius: 12px;
+      object-fit: cover;
+      object-position: center;
+      flex-shrink: 0;
+      min-width: 0;
+      background: #0d0d0d;
+    }
+
+    .games-container.view-grid .game-info {
+      width: 100%;
+      margin-top: 10px;
+      padding: 0;
+      box-sizing: border-box;
+      gap: 4px;
+      align-items: center;
+      text-align: center;
+    }
+
+    .games-container.view-grid .game-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      width: 100%;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .games-container.view-grid .game-meta {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* Grid: version only (hide release date line like reference UI) */
+    .games-container.view-grid .game-meta .meta-dot,
+    .games-container.view-grid .game-meta > span:last-child {
+      display: none;
+    }
+
+    .games-container.view-grid .game-rating {
+      justify-content: center;
+      margin-top: 2px;
+      gap: 3px;
+    }
+
+    .games-container.view-grid .game-rating i {
+      font-size: 0.72rem;
+      color: #ffd700;
+    }
+
+    .games-container.view-grid .game-rating .far {
+      color: #ffd700;
+    }
+
+    .games-container.view-grid .rating-num {
+      display: none;
+    }
+
+    .games-container.view-grid .game-arrow {
+      display: none;
+    }
     
     /* Click/Tap Effect - Scale Down (driven by JS .active class) */
     .game-card.active {
@@ -408,6 +535,7 @@
       height: 64px;
       border-radius: 12px;
       object-fit: cover;
+      object-position: center;
       margin-right: 12px;
       flex-shrink: 0;
       background: var(--darker);
@@ -1843,6 +1971,43 @@
       margin: 20px 16px 8px;
     }
 
+    /* View toggle (Grid / List) */
+    .view-toggle {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+
+    .view-toggle-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .view-toggle-btn:hover {
+      border-color: rgba(0, 255, 204, 0.25);
+      color: var(--text);
+      background: rgba(0, 255, 204, 0.06);
+    }
+
+    .view-toggle-btn.active,
+    .view-toggle-btn[aria-pressed="true"] {
+      border-color: rgba(0, 255, 204, 0.5);
+      color: var(--primary);
+      background: rgba(0, 255, 204, 0.12);
+      box-shadow: 0 0 0 3px rgba(0, 255, 204, 0.06);
+    }
+
     .games-search {
       position: relative;
       z-index: 50;
@@ -2170,10 +2335,12 @@
         font-size: 0.6rem;
       }
 
-      .google-login-btn {
-        padding: 8px 12px;
-        font-size: 0.8rem;
-        gap: 6px;
+      .login-icon-circle {
+        width: 34px;
+        height: 34px;
+      }
+      .login-icon-circle i {
+        font-size: 1.05rem;
       }
 
       .games-container {
@@ -2186,7 +2353,7 @@
         border-radius: 12px;
       }
 
-      .game-icon {
+      .games-container.view-list .game-icon {
         width: 52px;
         height: 52px;
         border-radius: 10px;
@@ -2300,7 +2467,7 @@
 
     /* Large Phones (428px+) */
     @media (min-width: 429px) and (max-width: 599px) {
-      .game-icon {
+      .games-container.view-list .game-icon {
         width: 72px;
         height: 72px;
       }
@@ -2352,11 +2519,16 @@
         margin: 0 auto;
       }
 
+      .games-container.view-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        max-width: 900px;
+      }
+
       .game-card {
         padding: 14px;
       }
 
-      .game-icon {
+      .games-container.view-list .game-icon {
         width: 72px;
         height: 72px;
       }
@@ -2492,21 +2664,30 @@
         font-size: 1.15rem;
       }
 
-      /* Game cards: 2-column grid on desktop */
+      /* Game cards */
       .games-container {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16px;
         max-width: 900px;
         margin: 0 auto;
         padding: 0 40px 30px;
+      }
+
+      .games-container.view-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .games-container.view-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
       }
 
       .game-card {
         padding: 14px;
       }
 
-      .game-icon {
+      .games-container.view-list .game-icon {
         width: 72px;
         height: 72px;
       }
@@ -2536,6 +2717,13 @@
       .games-search-wrapper {
         max-width: 900px;
         margin: 24px auto 12px;
+        padding: 0 40px;
+      }
+
+      .view-toggle {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
         padding: 0 40px;
       }
 
@@ -2659,6 +2847,11 @@
         padding: 0 60px 30px;
       }
 
+      .games-container.view-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        max-width: 1100px;
+      }
+
       .games-search-wrapper {
         max-width: 1000px;
         padding: 0 60px;
@@ -2695,7 +2888,7 @@
         gap: 20px;
       }
 
-      .game-icon {
+      .games-container.view-list .game-icon {
         width: 80px;
         height: 80px;
       }
@@ -2707,4 +2900,215 @@
       .hero-slider {
         max-height: 560px;
       }
+    }
+
+    /* Header profile control: icon-only (logged out: fa-user; logged in: avatar via .user-profile-btn) */
+
+    /* All games page */
+    .all-games-page-intro {
+      text-align: center;
+      padding: 24px 16px 8px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .all-games-page-intro h1 {
+      font-size: 1.65rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--white);
+    }
+    .all-games-page-intro p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .all-games-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .all-games-back:hover {
+      text-decoration: underline;
+    }
+
+    .contact-form-hint {
+      margin: 8px 0 12px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    /* Download help (chat-style widget, 3 quick questions — no API) */
+    .help-button-chat i {
+      font-size: 1.3rem;
+    }
+    .help-chat-modal .help-chat-content {
+      max-width: 420px;
+      width: 92%;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      overflow: hidden;
+      background: linear-gradient(165deg, rgba(18, 22, 32, 0.98) 0%, rgba(12, 14, 22, 0.99) 100());
+    }
+    .help-chat-header {
+      flex-shrink: 0;
+      padding: 18px 18px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .help-chat-title {
+      padding: 0;
+      margin: 0 0 6px;
+      font-size: 1.05rem;
+    }
+    .help-chat-title i {
+      margin-right: 8px;
+      color: var(--primary);
+    }
+    .help-chat-sub {
+      padding: 0;
+      margin: 0 0 12px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+    .help-chat-lang-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .help-chat-lang-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(0, 255, 204, 0.75);
+    }
+    .help-chat-lang-label i {
+      font-size: 0.85rem;
+    }
+    .help-chat-lang-select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.35);
+      color: #e8eaed;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 0.84rem;
+      cursor: pointer;
+      appearance: auto;
+    }
+    .help-chat-lang-select:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+    .help-chat-lang-select option {
+      background: #1a1f2e;
+      color: #e8eaed;
+    }
+    .help-chat-messages {
+      flex: 1;
+      min-height: 220px;
+      max-height: min(52vh, 420px);
+      overflow-y: auto;
+      padding: 14px 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      -webkit-overflow-scrolling: touch;
+      transition: opacity 0.2s ease;
+    }
+    .help-chat-messages.help-chat-messages--loading {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .help-chat-bubble {
+      max-width: 92%;
+      padding: 11px 14px;
+      border-radius: 14px;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      font-family: 'Exo 2', sans-serif;
+    }
+    .help-chat-bubble--assistant {
+      align-self: flex-start;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #e6eaf0;
+      border-bottom-left-radius: 4px;
+    }
+    .help-chat-bubble--user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(0, 255, 204, 0.22), rgba(0, 180, 200, 0.15));
+      border: 1px solid rgba(0, 255, 204, 0.35);
+      color: #e8fffa;
+      border-bottom-right-radius: 4px;
+    }
+    .help-chat-quick-replies {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-self: stretch;
+      margin-top: 2px;
+      margin-bottom: 4px;
+      padding-left: 4px;
+    }
+    .help-chat-suggest-btn {
+      text-align: left;
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 12px;
+      border: 1px dashed rgba(0, 255, 204, 0.35);
+      background: rgba(0, 255, 204, 0.05);
+      color: #c8fff5;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      line-height: 1.35;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .help-chat-suggest-btn:hover {
+      background: rgba(0, 255, 204, 0.12);
+      border-style: solid;
+      border-color: rgba(0, 255, 204, 0.5);
+    }
+    .help-chat-suggest-btn:active {
+      transform: scale(0.98);
+    }
+    .help-chat-quick-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(0, 255, 204, 0.65);
+      margin: 4px 0 2px 2px;
+    }
+    .help-chat-composer.help-chat-composer--readonly {
+      flex-shrink: 0;
+      padding: 12px 14px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .help-chat-composer-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .help-chat-composer-hint i {
+      color: var(--primary);
+      opacity: 0.8;
     }

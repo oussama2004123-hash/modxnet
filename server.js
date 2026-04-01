@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const {
-  findUserById, findUserByEmail, findUserByGoogleId, createUser, updateUserAvatar, updateUserProfile, updateUserByAdmin,
+  findUserById, findUserByEmail, findUserByGoogleId, createUser, updateUserAvatar, updateUserProfile, updateUserByAdmin, markWelcomeEmailSent, linkGoogleIdForUser, getHelpFaqs,
   getReviewsByGame, createReview, userReviewExists,
   getCommentsByGame, createComment,
   analyzeSentiment, cleanupExpired,
@@ -23,6 +23,150 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3334;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+
+/** Gmail for SMTP + contact inbox (override with SMTP_EMAIL / CONTACT_RECEIVE_EMAIL in .env or host vars) */
+const DEFAULT_SUPPORT_EMAIL = 'modxnet.support@gmail.com';
+const SMTP_USER = String(process.env.SMTP_EMAIL || DEFAULT_SUPPORT_EMAIL).trim();
+const CONTACT_INBOX = String(process.env.CONTACT_RECEIVE_EMAIL || SMTP_USER).trim();
+
+function getSiteBaseUrl(req) {
+  const env = (process.env.SITE_URL || '').trim().replace(/\/+$/, '');
+  if (env) return env;
+  const host = req.get('host');
+  if (!host) return 'https://modxnet.com';
+  const proto = (req.protocol === 'http' && (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT)) ? 'https' : req.protocol;
+  return proto + '://' + host;
+}
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Site URL for outbound email links when no request (uses SITE_URL or modxnet.com). */
+function getPublicBaseUrl() {
+  const env = (process.env.SITE_URL || '').trim().replace(/\/+$/, '');
+  if (env) return env;
+  return 'https://modxnet.com';
+}
+
+/** Default broadcast templates (admin can edit). Use {{username}} and {{siteUrl}} (no trailing slash). */
+function getComebackEmailDefaults() {
+  const html =
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;line-height:1.55;font-size:16px;">' +
+    '<p style="margin:0 0 18px;font-size:17px;">Hey {{username}},</p>' +
+    '<p style="margin:0 0 14px;">We noticed you haven\'t visited <strong>ModXNet</strong> in a while — and we get it, life gets busy.</p>' +
+    '<p style="margin:0 0 16px;font-weight:600;">But here\'s what you\'ve been missing:</p>' +
+    '<ul style="margin:0 0 20px;padding-left:20px;">' +
+    '<li style="margin-bottom:8px;">🔥 <strong>GTA V Mobile</strong> — Full open world, now in your pocket</li>' +
+    '<li style="margin-bottom:8px;">🏎️ <strong>Forza Horizon 5 Mobile</strong> — Stunning graphics on Android</li>' +
+    '<li style="margin-bottom:8px;">🚗 <strong>Assetto Corsa Mobile</strong> — The most realistic racing experience on mobile</li>' +
+    '<li style="margin-bottom:8px;">🚛 <strong>Euro Truck Simulator 2 Mobile</strong> — Chill and drive anywhere</li>' +
+    '</ul>' +
+    '<p style="margin:0 0 12px;">All free. All available right now on <strong>ModXNet</strong>.</p>' +
+    '<p style="margin:0 0 24px;">These aren\'t basic mobile games — they\'re the full PC experience, optimized for Android.</p>' +
+    '<p style="margin:0 0 28px;text-align:center;">' +
+    '<a href="{{siteUrl}}/" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#00ffcc,#00c4a7);color:#0a0a0a;font-weight:700;border-radius:12px;text-decoration:none;font-size:16px;">Download now — visit ModXNet</a>' +
+    '</p>' +
+    '<p style="margin:0;font-size:15px;color:#333;">See you on the road,<br><strong>The ModXNet Team</strong></p>' +
+    '</div>';
+  const text =
+    'Hey {{username}},\n\n' +
+    'We noticed you haven\'t visited ModXNet in a while — and we get it, life gets busy.\n\n' +
+    'But here\'s what you\'ve been missing:\n\n' +
+    '• GTA V Mobile — Full open world, now in your pocket\n' +
+    '• Forza Horizon 5 Mobile — Stunning graphics on Android\n' +
+    '• Assetto Corsa Mobile — The most realistic racing experience on mobile\n' +
+    '• Euro Truck Simulator 2 Mobile — Chill and drive anywhere\n\n' +
+    'All free. All available right now on ModXNet.\n\n' +
+    'These aren\'t basic mobile games — they\'re the full PC experience, optimized for Android.\n\n' +
+    'Download now: {{siteUrl}}/\n\n' +
+    'See you on the road,\nThe ModXNet Team';
+  return {
+    subject: 'We miss you on ModXNet — come back for free games',
+    html,
+    text
+  };
+}
+
+function applyComebackSubjectTemplate(template, username) {
+  const name = (username || 'there').trim() || 'there';
+  return String(template || '').replace(/\{\{username\}\}/g, name).slice(0, 500);
+}
+
+function applyComebackHtmlTemplate(template, username, siteBase) {
+  const name = (username || 'there').trim() || 'there';
+  const base = String(siteBase || getPublicBaseUrl()).replace(/\/+$/, '');
+  return String(template || '')
+    .replace(/\{\{username\}\}/g, escapeHtml(name))
+    .replace(/\{\{siteUrl\}\}/g, escapeHtml(base));
+}
+
+function applyComebackTextTemplate(template, username, siteBase) {
+  const name = (username || 'there').trim() || 'there';
+  const base = String(siteBase || getPublicBaseUrl()).replace(/\/+$/, '');
+  return String(template || '')
+    .replace(/\{\{username\}\}/g, name)
+    .replace(/\{\{siteUrl\}\}/g, base);
+}
+
+/** Fallback plain text when admin leaves text body empty. */
+function crudeHtmlToText(html) {
+  return String(html || '')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function upsertHeadTag(html, tagName, attrs, innerText) {
+  // For <title> use innerText, others are self-closing-like tags
+  if (tagName === 'title') {
+    const titleRe = /<title>[\s\S]*?<\/title>/i;
+    const safe = `<title>${escapeHtml(innerText || '')}</title>`;
+    if (titleRe.test(html)) return html.replace(titleRe, safe);
+    return html.replace(/<\/head>/i, safe + '\n</head>');
+  }
+
+  const attrString = Object.entries(attrs || {})
+    .map(([k, v]) => ` ${k}="${escapeHtml(v)}"`)
+    .join('');
+  const tagHtml = `<${tagName}${attrString}>`;
+
+  // Match same tag by name + key attrs (name/rel/property)
+  let selectorRe = null;
+  if (tagName === 'meta' && attrs && attrs.name) {
+    selectorRe = new RegExp(`<meta[^>]*\\sname=["']${attrs.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'i');
+  } else if (tagName === 'link' && attrs && attrs.rel) {
+    selectorRe = new RegExp(`<link[^>]*\\srel=["']${attrs.rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'i');
+  }
+
+  if (selectorRe && selectorRe.test(html)) return html.replace(selectorRe, tagHtml);
+  return html.replace(/<\/head>/i, tagHtml + '\n</head>');
+}
+
+function injectSeoTags({ html, title, description, keywords, canonical }) {
+  let out = html;
+  out = upsertHeadTag(out, 'title', null, title);
+  out = upsertHeadTag(out, 'meta', { name: 'description', content: description }, null);
+  out = upsertHeadTag(out, 'meta', { name: 'keywords', content: keywords }, null);
+  out = upsertHeadTag(out, 'link', { rel: 'canonical', href: canonical }, null);
+  return out;
+}
 
 // ========== HEALTH CHECK (must be first, before any middleware) ==========
 app.get('/health', (req, res) => {
@@ -67,24 +211,30 @@ passport.deserializeUser((id, done) => {
   }
 });
 
-// Google OAuth Strategy
-// Resolves callback URL for production (VPS/modxnet.com) and dev. Must be full https URL for production.
-function getGoogleCallbackURL() {
-  if (process.env.GOOGLE_CALLBACK_URL) return process.env.GOOGLE_CALLBACK_URL;
-  const base = process.env.SITE_URL || process.env.RAILWAY_PUBLIC_DOMAIN;
-  if (base) {
-    const host = base.replace(/^https?:\/\//, '').split('/')[0];
-    return 'https://' + host + '/api/auth/google/callback';
+// Google OAuth — redirect_uri must match Google Cloud Console "Authorized redirect URIs" exactly.
+// Build from each request's Host (with trust proxy) so prod is never stuck on localhost from .env.
+function getGoogleOAuthCallbackUrl(req) {
+  let host = req.get('host');
+  if (host && host.includes('127.0.0.1')) {
+    host = host.replace('127.0.0.1', 'localhost');
   }
-  // Dev fallback: relative path (Passport resolves from request host)
-  return '/api/auth/google/callback';
+  if (!host) {
+    const base = (process.env.SITE_URL || '').trim().replace(/\/+$/, '') || ('http://localhost:' + PORT);
+    return base + '/api/auth/google/callback';
+  }
+  let proto = req.protocol || 'https';
+  if (proto === 'http' && isProduction) {
+    proto = 'https';
+  }
+  return proto + '://' + host + '/api/auth/google/callback';
 }
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: getGoogleCallbackURL(),
+  // Real URI is passed on each passport.authenticate(..., { callbackURL }) call
+  callbackURL: 'http://localhost:' + PORT + '/api/auth/google/callback',
   proxy: isProduction
 }, (accessToken, refreshToken, profile, done) => {
   try {
@@ -96,7 +246,13 @@ passport.use(new GoogleStrategy({
     const email = profile.emails && profile.emails[0] ? profile.emails[0].value : '';
     if (email) {
       user = findUserByEmail.get(email);
-      if (user) return done(null, user);
+      if (user) {
+        if (profile.id && (!user.google_id || String(user.google_id).trim() === '')) {
+          linkGoogleIdForUser.run(profile.id, user.id);
+          user = findUserById.get(user.id);
+        }
+        return done(null, user);
+      }
     }
 
     // Create new user
@@ -118,6 +274,13 @@ passport.use(new GoogleStrategy({
   console.warn('WARNING: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set. Google OAuth disabled.');
 }
 
+// Admin account — only this email (Google or local login) can use /admin and /api/admin/*
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || 'modxnet.support@gmail.com').trim().toLowerCase();
+
+function isAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === ADMIN_EMAIL;
+}
+
 // Auth middleware helper
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
@@ -127,16 +290,25 @@ function requireAuth(req, res, next) {
 // ========== AUTH ROUTES ==========
 
 // Google OAuth
-app.get('/api/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+app.get('/api/auth/google', (req, res, next) => {
+  const callbackURL = getGoogleOAuthCallbackUrl(req);
+  passport.authenticate('google', { scope: ['profile', 'email'], callbackURL })(req, res, next);
+});
 
 app.get('/api/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/?login=failed' }),
-  (req, res) => {
-    // Redirect back to the page user came from, or homepage
+  (req, res, next) => {
+    const callbackURL = getGoogleOAuthCallbackUrl(req);
+    passport.authenticate('google', { failureRedirect: '/?login=failed', callbackURL })(req, res, next);
+  },
+  async (req, res) => {
     const returnTo = req.session.returnTo || '/';
     delete req.session.returnTo;
+    const uid = req.user && req.user.id;
+    try {
+      if (uid) await sendWelcomeEmailIfNeeded(uid);
+    } catch (e) {
+      console.error('[welcome-email] Google callback error:', e && e.message);
+    }
     res.redirect(returnTo);
   }
 );
@@ -179,6 +351,7 @@ app.post('/api/auth/register', async (req, res) => {
     // Log user in immediately
     req.login(user, (err) => {
       if (err) return res.status(500).json({ error: 'Registration succeeded but auto-login failed' });
+      void sendWelcomeEmailIfNeeded(user.id);
       res.json({
         success: true,
         user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url }
@@ -211,6 +384,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     req.login(user, (err) => {
       if (err) return res.status(500).json({ error: 'Login failed' });
+      void sendWelcomeEmailIfNeeded(user.id);
       res.json({
         success: true,
         user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url }
@@ -229,7 +403,7 @@ app.get('/api/auth/me', (req, res) => {
     res.json({
       loggedIn: true,
       user: { id: u.id, username: u.username, email: u.email, avatar_url: u.avatar_url },
-      isAdmin: u.email === ADMIN_EMAIL
+      isAdmin: isAdminEmail(u.email)
     });
   } else {
     res.json({ loggedIn: false });
@@ -340,7 +514,7 @@ const transporter = nodemailer.createTransport({
   secure: false,
   family: 4,
   auth: {
-    user: process.env.SMTP_EMAIL,
+    user: SMTP_USER,
     pass: process.env.SMTP_APP_PASSWORD
   },
   tls: {
@@ -352,9 +526,202 @@ const transporter = nodemailer.createTransport({
 });
 
 // Verify SMTP connection on startup
+console.log(`Contact form mail: from <${SMTP_USER}> → to <${CONTACT_INBOX}>`);
 transporter.verify()
   .then(() => console.log('SMTP connection verified (port 587) - contact form ready'))
   .catch(err => console.error('SMTP connection FAILED:', err.code, err.message));
+
+/** One-time welcome email after sign-in (not shown on site). Set WELCOME_EMAIL_ALWAYS=1 to send on every login (testing; does not update DB flag). */
+async function sendWelcomeEmailIfNeeded(userId) {
+  const alwaysSend = process.env.WELCOME_EMAIL_ALWAYS === '1';
+  try {
+    const row = findUserById.get(userId);
+    if (!row || !String(row.email || '').trim()) {
+      console.warn('[welcome-email] skip: no user/email for id', userId);
+      return;
+    }
+    const toAddr = String(row.email).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toAddr)) {
+      console.warn('[welcome-email] skip: invalid email', toAddr);
+      return;
+    }
+
+    const sentFlag = row.welcome_email_sent;
+    const alreadySent = sentFlag === 1 || sentFlag === true || Number(sentFlag) === 1;
+    if (alreadySent && !alwaysSend) {
+      console.log('[welcome-email] skip: already sent to', toAddr);
+      return;
+    }
+
+    if (!process.env.SMTP_APP_PASSWORD || !String(process.env.SMTP_APP_PASSWORD).trim()) {
+      console.error('[welcome-email] skip: SMTP_APP_PASSWORD is missing — cannot send mail');
+      return;
+    }
+
+    const name = String(row.username || 'there').trim();
+    const safeName = escapeHtml(name);
+    const html = `
+      <div style="font-family:Georgia,Times,serif;max-width:600px;margin:0 auto;color:#222;line-height:1.55;">
+        <p style="font-size:17px;margin-bottom:16px;">Dear <strong>${safeName}</strong>, thank you for joining our community. We are pleased to have you with us.</p>
+        <p style="font-size:16px;">Every title in our catalog is offered <strong>at no cost</strong> to you. Below is a short, step-by-step guide to obtaining your download smoothly.</p>
+        <div style="margin:24px 0;padding:20px;background:#f6f9fc;border-radius:10px;border:1px solid #e2e8f0;">
+          <h2 style="margin:0 0 14px;font-size:18px;color:#0d9488;">How to download — tutorial</h2>
+          <ol style="margin:0;padding-left:22px;font-size:15px;">
+            <li style="margin-bottom:10px;">Open the game you want on ModXnet and select the <strong>Download</strong> button.</li>
+            <li style="margin-bottom:10px;">When prompted, choose any offer from the list that appears.</li>
+            <li style="margin-bottom:10px;">Start the selected offer and complete it as instructed (for example: install a suggested application and use it for about 30 seconds).</li>
+            <li style="margin-bottom:10px;">Return to ModXnet, keep the site open, and remain on the page for approximately 30 seconds so our system can verify completion.</li>
+            <li style="margin-bottom:10px;">Your download will begin or unlock automatically once the offer is confirmed.</li>
+          </ol>
+        </div>
+        <p style="font-size:15px;color:#444;">If anything is unclear, use the <strong>Help</strong> button on the website for common questions, or contact us via the form. Enjoy your games responsibly.</p>
+        <p style="margin-top:28px;font-size:13px;color:#888;">— ModXnet</p>
+      </div>`;
+
+    const text =
+      `Dear ${name},\n\n` +
+      'Thank you for joining ModXnet. Every title in our catalog is offered at no cost to you.\n\n' +
+      'How to download:\n' +
+      '1) Open the game on ModXnet and tap Download.\n' +
+      '2) Choose an offer from the list.\n' +
+      '3) Complete the offer (e.g. install an app and use it ~30 seconds).\n' +
+      '4) Return to ModXnet, keep the site open ~30 seconds for verification.\n' +
+      '5) Your download unlocks when the offer is confirmed.\n\n' +
+      'Use the Help button on the site for common questions, or the contact form if you need help.\n\n' +
+      '— ModXnet';
+
+    console.log('[welcome-email] sending from', SMTP_USER, '→', toAddr, '(user id', userId + ')');
+    const info = await transporter.sendMail({
+      from: `"ModXnet" <${SMTP_USER}>`,
+      to: toAddr,
+      replyTo: CONTACT_INBOX,
+      subject: 'Welcome to ModXnet — your download guide',
+      text,
+      html
+    });
+    console.log('[welcome-email] sent OK, messageId:', info && info.messageId);
+    if (!alwaysSend) markWelcomeEmailSent.run(userId);
+  } catch (err) {
+    console.error('[welcome-email] FAILED:', err.code || '', err.message, err.response || '');
+  }
+}
+
+/** Translate contact message to professional English for the inbox (server-side only). */
+async function translateContactMessageForInbox(text) {
+  if (!DEEPSEEK_API_KEY || !text) return null;
+  try {
+    const prompt = `You are assisting ModXnet support. Translate the following customer message into clear, professional English.
+Output ONLY the translated text. No quotes or notes. Preserve names, emails, and URLs exactly as given.\n\n${String(text).slice(0, 8000)}`;
+    const aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DEEPSEEK_API_KEY },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 4000
+      })
+    });
+    if (!aiRes.ok) return null;
+    const aiData = await aiRes.json();
+    const out = (aiData.choices?.[0]?.message?.content || '').trim();
+    return out || null;
+  } catch (err) {
+    console.error('Contact translation (DeepSeek):', err.message);
+    return null;
+  }
+}
+
+/** English bundle for help chat — keep in sync with HELP_CHAT_EN in script.js */
+const HELP_CHAT_EN_BUNDLE = {
+  title: 'Download helper',
+  greeting: 'Hi! I’m here to help with downloads. Below are the three questions we get the most — tap one and I’ll reply instantly.',
+  quickLabel: 'Most asked',
+  composerHint: 'Tap a question in the chat to reply',
+  subLead: 'All games on ModXnet are free.',
+  subTail: 'Pick one of the most asked questions below.',
+  items: [
+    {
+      question: 'How do I download a game?',
+      answer: 'Open the game’s page on ModXnet and tap Download. Pick an offer from the list and complete it (for example: install the suggested app and use it for about 30 seconds). Return to ModXnet, keep the tab open on the site for roughly 30 seconds, and your download will unlock or start automatically once the offer is verified. All games on ModXnet are free for you—the offers support the platform.'
+    },
+    {
+      question: 'Are ModXnet games really free?',
+      answer: 'Yes. Every game in our catalog is free for you to unlock. You may need to complete a short third‑party offer first; that is how we keep the service free for everyone.'
+    },
+    {
+      question: 'I finished the offer but nothing happens — what now?',
+      answer: 'Make sure you returned to the same browser tab on ModXnet, disabled strict blockers if needed, and waited at least 30 seconds on the page. Try completing another offer from the list if the first one did not register. If it still fails, use the contact form and we will help.'
+    }
+  ]
+};
+
+const helpChatLocalizeCache = new Map();
+const HELP_CHAT_LOCALIZE_CACHE_MAX = 250;
+
+function normalizeHelpChatLang(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const s = raw.trim().toLowerCase();
+  if (!/^[a-z]{2}([-a-z0-9]+)?$/.test(s)) return '';
+  return s.length > 2 ? s.slice(0, 2) : s;
+}
+
+function helpChatLangEnglishName(code) {
+  try {
+    const c = code.split('-')[0];
+    const dn = new Intl.DisplayNames(['en'], { type: 'language' });
+    return dn.of(c) || code;
+  } catch {
+    return code;
+  }
+}
+
+function stripAiJsonFence(text) {
+  let t = String(text || '').trim();
+  if (t.startsWith('```')) {
+    t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  }
+  return t.trim();
+}
+
+function isValidHelpChatBundle(o) {
+  if (!o || typeof o !== 'object') return false;
+  if (typeof o.title !== 'string' || typeof o.greeting !== 'string' || typeof o.quickLabel !== 'string' || typeof o.composerHint !== 'string') return false;
+  if (typeof o.subLead !== 'string' || typeof o.subTail !== 'string') return false;
+  if (!Array.isArray(o.items) || o.items.length !== 3) return false;
+  return o.items.every((it) => it && typeof it.question === 'string' && typeof it.answer === 'string');
+}
+
+async function translateHelpChatBundleToLang(targetLang) {
+  if (!DEEPSEEK_API_KEY) return null;
+  const langName = helpChatLangEnglishName(targetLang);
+  const payload = JSON.stringify(HELP_CHAT_EN_BUNDLE);
+  const prompt = `You translate ModXnet customer support UI strings. Target language: ${langName} (ISO code: ${targetLang}).
+Translate every string value to natural, fluent ${langName}. Keep the brand name "ModXnet" unchanged. Keep time hints like "30 seconds" accurate in the target language.
+Output ONLY valid JSON with exactly these keys: title, greeting, quickLabel, composerHint, subLead, subTail, items (array of 3 objects with question and answer). No markdown, no code fences, no commentary.
+\n${payload}`;
+
+  const aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DEEPSEEK_API_KEY },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 4000
+    })
+  });
+  if (!aiRes.ok) return null;
+  const aiData = await aiRes.json();
+  const raw = (aiData.choices?.[0]?.message?.content || '').trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(stripAiJsonFence(raw));
+  } catch {
+    return null;
+  }
+  return isValidHelpChatBundle(parsed) ? parsed : null;
+}
 
 app.post('/api/contact', async (req, res) => {
   try {
@@ -371,19 +738,34 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ error: 'Message must be at least 10 characters' });
     }
 
-    // Send email
+    const rawName = name.trim();
+    const rawEmail = email.trim();
+    const rawMsg = message.trim();
+    const safeName = escapeHtml(rawName);
+    const safeEmail = escapeHtml(rawEmail);
+    const safeMsg = escapeHtml(rawMsg);
+
+    let translatedBlock = '';
+    const translated = await translateContactMessageForInbox(rawMsg);
+    if (translated) {
+      translatedBlock = `
+          <h3 style="margin-top:20px;color:#0d9488;">Professional English (for support)</h3>
+          <div style="background:#e8faf8;padding:15px;border-radius:8px;border:1px solid #b2dfdb;white-space:pre-wrap;">${escapeHtml(translated)}</div>`;
+    }
+
     await transporter.sendMail({
-      from: `"ModXnet Contact" <${process.env.SMTP_EMAIL}>`,
-      to: process.env.CONTACT_RECEIVE_EMAIL,
-      replyTo: email,
-      subject: `ModXnet Contact: ${name.trim()}`,
+      from: `"ModXnet Contact" <${SMTP_USER}>`,
+      to: CONTACT_INBOX,
+      replyTo: rawEmail,
+      subject: `ModXnet Contact: ${rawName}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
           <h2 style="color:#00ffcc;border-bottom:1px solid #eee;padding-bottom:10px;">New Contact Message</h2>
-          <p><strong>From:</strong> ${name.trim()}</p>
-          <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
-          <p><strong>Message:</strong></p>
-          <div style="background:#f5f5f5;padding:15px;border-radius:8px;white-space:pre-wrap;">${message.trim()}</div>
+          <p><strong>From:</strong> ${safeName}</p>
+          <p><strong>Email:</strong> <a href="mailto:${rawEmail}">${safeEmail}</a></p>
+          <p><strong>Original message:</strong></p>
+          <div style="background:#f5f5f5;padding:15px;border-radius:8px;white-space:pre-wrap;">${safeMsg}</div>
+          ${translatedBlock}
           <hr style="margin-top:20px;border:none;border-top:1px solid #eee;">
           <p style="color:#999;font-size:12px;">Sent from ModXnet Contact Form</p>
         </div>
@@ -399,6 +781,55 @@ app.post('/api/contact', async (req, res) => {
     res.status(500).json({ error: errorMsg });
   }
 });
+
+// Download help topics (stored in DB; no chat API)
+app.get('/api/help/faqs', (req, res) => {
+  try {
+    res.json({ items: getHelpFaqs.all() });
+  } catch (err) {
+    console.error('help/faqs:', err);
+    res.status(500).json({ error: 'Failed to load help' });
+  }
+});
+
+/** Help chat UI strings in the user’s language (DeepSeek). GET ?lang=xx avoids POST/body issues behind some proxies. */
+async function serveHelpLocalize(req, res) {
+  res.set('Cache-Control', 'private, no-store');
+  const raw = req.method === 'GET'
+    ? (Array.isArray(req.query.lang) ? req.query.lang[0] : req.query.lang)
+    : (req.body && req.body.lang);
+  const lang = normalizeHelpChatLang(raw != null && raw !== '' ? String(raw).trim() : '');
+  if (!lang) {
+    return res.status(400).json({ error: 'Invalid language code' });
+  }
+  if (lang === 'en') {
+    return res.json({ ...HELP_CHAT_EN_BUNDLE, source: 'en' });
+  }
+  if (helpChatLocalizeCache.has(lang)) {
+    return res.json({ ...helpChatLocalizeCache.get(lang), source: 'cache' });
+  }
+  if (!DEEPSEEK_API_KEY) {
+    return res.json({ ...HELP_CHAT_EN_BUNDLE, source: 'en', fallback: true, reason: 'no_api_key' });
+  }
+  try {
+    const translated = await translateHelpChatBundleToLang(lang);
+    if (!translated) {
+      return res.json({ ...HELP_CHAT_EN_BUNDLE, source: 'en', fallback: true, reason: 'translate_failed' });
+    }
+    helpChatLocalizeCache.set(lang, translated);
+    if (helpChatLocalizeCache.size > HELP_CHAT_LOCALIZE_CACHE_MAX) {
+      const first = helpChatLocalizeCache.keys().next().value;
+      helpChatLocalizeCache.delete(first);
+    }
+    return res.json({ ...translated, source: 'ai' });
+  } catch (err) {
+    console.error('help/localize:', err.message);
+    return res.json({ ...HELP_CHAT_EN_BUNDLE, source: 'en', fallback: true, reason: 'server_error' });
+  }
+}
+
+app.get('/api/help/localize', serveHelpLocalize);
+app.post('/api/help/localize', serveHelpLocalize);
 
 // ========== REVIEWS API ==========
 app.get('/api/reviews/:gameSlug', (req, res) => {
@@ -508,13 +939,11 @@ app.get('/api/games', (req, res) => {
 });
 
 // ========== ADMIN MIDDLEWARE ==========
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'oussama2004123@gmail.com';
-
 function requireAdmin(req, res, next) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  if (req.user.email !== ADMIN_EMAIL) {
+  if (!isAdminEmail(req.user.email)) {
     return res.status(403).json({ error: 'Access denied. Admin only.' });
   }
   next();
@@ -522,7 +951,7 @@ function requireAdmin(req, res, next) {
 
 // Admin check endpoint
 app.get('/api/admin/check', (req, res) => {
-  if (req.isAuthenticated() && req.user.email === ADMIN_EMAIL) {
+  if (req.isAuthenticated() && isAdminEmail(req.user.email)) {
     res.json({ isAdmin: true, user: { id: req.user.id, username: req.user.username, email: req.user.email, avatar_url: req.user.avatar_url } });
   } else {
     res.json({ isAdmin: false });
@@ -530,8 +959,6 @@ app.get('/api/admin/check', (req, res) => {
 });
 
 // ========== ADMIN: AI GENERATE (RAWG + DeepSeek) ==========
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
-
 app.post('/api/admin/ai-generate', requireAdmin, async (req, res) => {
   try {
     const { gameName } = req.body;
@@ -587,6 +1014,9 @@ app.post('/api/admin/ai-generate', requireAdmin, async (req, res) => {
     let aiFeatures = [];
     let aiDescription = '';
     let aiSubtitle = '';
+    let seoTitle = '';
+    let seoDescription = '';
+    let seoKeywords = '';
 
     if (DEEPSEEK_API_KEY) {
       try {
@@ -598,7 +1028,10 @@ Return ONLY a valid JSON object (no markdown, no code blocks):
 {
   "description": "2-3 sentence compelling mobile download page description",
   "features": ["feature 1", "feature 2", "feature 3", "feature 4", "feature 5"],
-  "subtitle": "3-5 word subtitle like Open World Action Adventure"
+  "subtitle": "3-5 word subtitle like Open World Action Adventure",
+  "seo_title": "SEO title for this game page (max ~60 chars)",
+  "seo_description": "SEO meta description (max ~160 chars)",
+  "seo_keywords": "comma-separated keywords"
 }
 
 Rules:
@@ -606,6 +1039,7 @@ Rules:
 - Exactly 5 features, specific to THIS game
 - Description for mobile gaming audience
 - Keep factual about the real game
+- For SEO: include Android + download intent, avoid keyword stuffing
 - JSON only, nothing else`;
 
         const aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -631,6 +1065,9 @@ Rules:
             aiFeatures = Array.isArray(parsed.features) ? parsed.features : [];
             aiDescription = parsed.description || '';
             aiSubtitle = parsed.subtitle || '';
+            seoTitle = parsed.seo_title || '';
+            seoDescription = parsed.seo_description || '';
+            seoKeywords = parsed.seo_keywords || '';
           }
         }
       } catch(aiErr) {
@@ -659,6 +1096,27 @@ Rules:
       aiSubtitle = genres.length > 0 ? genres.slice(0, 3).join(' ') + ' Game' : 'Mobile Game';
     }
 
+    // 4. SEO fallbacks
+    const year = new Date().getFullYear();
+    if (!seoTitle) seoTitle = `Download ${title} for Android ${year} - ModXNet`;
+    if (!seoDescription) {
+      const short = (aiDescription || '').replace(/\s+/g, ' ').trim();
+      const v = version.replace(/^v/i, '');
+      const base = `Download ${title} v${v} MOD APK for Android.`;
+      const combined = (base + ' ' + short + ' Free download on ModXNet.').replace(/\s+/g, ' ').trim();
+      seoDescription = combined.length > 170 ? combined.slice(0, 167).trimEnd() + '…' : combined;
+    }
+    if (!seoKeywords) {
+      const cleanName = title.replace(/\s+/g, ' ').trim();
+      seoKeywords = [
+        `${cleanName} mobile`,
+        `${cleanName} android`,
+        `${cleanName} apk`,
+        `${cleanName} mod`,
+        `download ${cleanName}`
+      ].join(', ');
+    }
+
     res.json({
       title,
       description: aiDescription,
@@ -672,6 +1130,9 @@ Rules:
       cover_image: coverImage,
       screenshots,
       developers: developers.join(', '),
+      seo_title: seoTitle,
+      seo_description: seoDescription,
+      seo_keywords: seoKeywords
     });
   } catch (err) {
     console.error('AI generate error:', err);
@@ -777,13 +1238,16 @@ app.get('/api/admin/games', requireAdmin, (req, res) => {
 
 app.post('/api/admin/games', requireAdmin, (req, res) => {
   try {
-    const { slug, title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible } = req.body;
+    const { slug, title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible, seo_title, seo_description, seo_keywords } = req.body;
     if (!slug || !title) return res.status(400).json({ error: 'Slug and title are required' });
     insertGame.run({
       slug, title, image_url: image_url || '', data_game: data_game || slug.toLowerCase(),
       category: category || '', version: version || 'v1.0', release_date: release_date || '',
       rating: parseFloat(rating) || 4.0, link: link || '/' + slug + '/',
-      sort_order: parseInt(sort_order) || 0, visible: visible !== undefined ? (visible ? 1 : 0) : 1
+      sort_order: parseInt(sort_order) || 0, visible: visible !== undefined ? (visible ? 1 : 0) : 1,
+      seo_title: seo_title || '',
+      seo_description: seo_description || '',
+      seo_keywords: seo_keywords || ''
     });
     // Auto-create adblue_config entry for this game if it doesn't exist
     try {
@@ -804,13 +1268,16 @@ app.post('/api/admin/games', requireAdmin, (req, res) => {
 
 app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
   try {
-    const { title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible } = req.body;
+    const { title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible, seo_title, seo_description, seo_keywords } = req.body;
     updateGame.run({
       id: parseInt(req.params.id), title, image_url: image_url || '',
       data_game: data_game || '', category: category || '',
       version: version || 'v1.0', release_date: release_date || '',
       rating: parseFloat(rating) || 4.0, link: link || '',
-      sort_order: parseInt(sort_order) || 0, visible: visible ? 1 : 0
+      sort_order: parseInt(sort_order) || 0, visible: visible ? 1 : 0,
+      seo_title: seo_title || '',
+      seo_description: seo_description || '',
+      seo_keywords: seo_keywords || ''
     });
     res.json({ success: true, games: getAllGamesAdmin.all() });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1766,6 +2233,89 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+const COMEBACK_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+app.get('/api/admin/email/comeback-draft', requireAdmin, (req, res) => {
+  try {
+    const users = getAllUsers.all();
+    const n = users.filter((u) => COMEBACK_EMAIL_RE.test(String(u.email || '').trim())).length;
+    const defaults = getComebackEmailDefaults();
+    res.json({
+      siteUrl: getPublicBaseUrl(),
+      recipientCount: n,
+      placeholders: ['{{username}}', '{{siteUrl}}'],
+      defaults: {
+        subject: defaults.subject,
+        html: defaults.html,
+        text: defaults.text
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Send email blast to all users with valid addresses.
+ * Body: { "confirm": true, "subject": "...", "html": "...", "text": "..." (optional) }
+ * Templates may include {{username}} and {{siteUrl}} (base URL, no trailing slash).
+ */
+app.post('/api/admin/email/comeback-blast', requireAdmin, async (req, res) => {
+  if (!req.body || req.body.confirm !== true) {
+    return res.status(400).json({ error: 'Set JSON body { "confirm": true } to send.' });
+  }
+  if (!process.env.SMTP_APP_PASSWORD || !String(process.env.SMTP_APP_PASSWORD).trim()) {
+    return res.status(503).json({ error: 'SMTP not configured (SMTP_APP_PASSWORD missing).' });
+  }
+  const subjectTpl = String(req.body.subject || '').trim();
+  const htmlTpl = String(req.body.html || '').trim();
+  const textTplRaw = req.body.text != null ? String(req.body.text).trim() : '';
+  if (!subjectTpl) {
+    return res.status(400).json({ error: 'Subject is required.' });
+  }
+  if (!htmlTpl || htmlTpl.length < 4) {
+    return res.status(400).json({ error: 'HTML body is required (a few characters minimum).' });
+  }
+  const siteBase = getPublicBaseUrl();
+  let users;
+  try {
+    users = getAllUsers.all();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  let sent = 0;
+  const failures = [];
+  for (const u of users) {
+    const email = String(u.email || '').trim();
+    if (!COMEBACK_EMAIL_RE.test(email)) continue;
+    try {
+      const htmlFinal = applyComebackHtmlTemplate(htmlTpl, u.username, siteBase);
+      const textFinal = textTplRaw.length
+        ? applyComebackTextTemplate(textTplRaw, u.username, siteBase)
+        : crudeHtmlToText(htmlFinal);
+      const subjectFinal = applyComebackSubjectTemplate(subjectTpl, u.username);
+      await transporter.sendMail({
+        from: `"ModXNet" <${SMTP_USER}>`,
+        to: email,
+        replyTo: CONTACT_INBOX,
+        subject: subjectFinal,
+        text: textFinal,
+        html: htmlFinal
+      });
+      sent++;
+      await new Promise((r) => setTimeout(r, 550));
+    } catch (err) {
+      failures.push({ email, error: err.message || String(err) });
+    }
+  }
+  res.json({
+    success: true,
+    sent,
+    failed: failures.length,
+    failures: failures.slice(0, 25)
+  });
+});
+
 // ========== ADMIN: REVIEWS & COMMENTS ==========
 app.get('/api/admin/reviews', requireAdmin, (req, res) => {
   try { res.json(getAllReviews.all()); }
@@ -1820,6 +2370,107 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 app.use('/uploads', express.static(uploadDir));
 
 // ========== STATIC FILES (after all /api routes) ==========
+// ========== SEO HTML ROUTES (must be before static files) ==========
+
+app.get('/', (req, res, next) => {
+  try {
+    const filePath = path.join(__dirname, 'index.html');
+    if (!fs.existsSync(filePath)) return next();
+    const html = fs.readFileSync(filePath, 'utf8');
+    const year = new Date().getFullYear();
+    const games = getAllGames.all();
+    const topNames = (games || []).slice(0, 6).map(g => g.title).filter(Boolean);
+    const title = `Download Mobile Games for Android ${year} - ModXNet`;
+    const description = topNames.length
+      ? `Download the latest mobile games for Android. Top picks: ${topNames.join(', ')}. Free download on ModXNet.`
+      : `Download the latest mobile games for Android ${year}. Free download on ModXNet.`;
+    const keywords = `modded games, mobile games, android games, mod apk, download games, ModXNet`;
+    const canonical = getSiteBaseUrl(req) + '/';
+    res.type('html').send(injectSeoTags({ html, title, description, keywords, canonical }));
+  } catch (e) {
+    next();
+  }
+});
+
+app.get('/category/:category', (req, res, next) => {
+  try {
+    const filePath = path.join(__dirname, 'index.html');
+    if (!fs.existsSync(filePath)) return next();
+    const html = fs.readFileSync(filePath, 'utf8');
+    const year = new Date().getFullYear();
+    const cat = String(req.params.category || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const { db } = require('./database');
+    const matches = db.prepare(`SELECT title FROM games WHERE visible = 1 AND deleted_at IS NULL AND lower(category) LIKE ? ORDER BY sort_order ASC LIMIT 8`).all('%' + cat + '%');
+    const titles = matches.map(r => r.title).filter(Boolean);
+    const prettyCat = cat.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const title = `Download ${prettyCat} Games for Android ${year} - ModXNet`;
+    const description = titles.length
+      ? `Download ${prettyCat} games for Android. Popular: ${titles.join(', ')}. Free download on ModXNet.`
+      : `Download ${prettyCat} games for Android ${year}. Free download on ModXNet.`;
+    const keywords = `${cat} games, ${cat} mobile, ${cat} android, ${cat} apk, mod apk, download ${cat} games`;
+    const canonical = getSiteBaseUrl(req) + `/category/${cat}`;
+    res.type('html').send(injectSeoTags({ html, title, description, keywords, canonical }));
+  } catch (e) {
+    next();
+  }
+});
+
+app.get('/all-games', (req, res, next) => {
+  try {
+    const filePath = path.join(__dirname, 'all-games.html');
+    if (!fs.existsSync(filePath)) return next();
+    const html = fs.readFileSync(filePath, 'utf8');
+    const year = new Date().getFullYear();
+    const games = getAllGames.all();
+    const titles = (games || []).map(g => g.title).filter(Boolean);
+    const title = `All Games — Free Mobile Downloads ${year} | ModXNet`;
+    const description = titles.length
+      ? `Browse every game on ModXNet. ${titles.slice(0, 15).join(', ')}. Free downloads for Android—complete a short offer to unlock your file.`
+      : `Browse the full ModXNet game catalog ${year}. Free mobile game downloads.`;
+    const keywords = `all games, ModXNet catalog, free android games, mobile downloads, mod games`;
+    const canonical = getSiteBaseUrl(req).replace(/\/+$/, '') + '/all-games';
+    res.type('html').send(injectSeoTags({ html, title, description, keywords, canonical }));
+  } catch (e) {
+    next();
+  }
+});
+
+app.get('/:gameSlug/', (req, res, next) => {
+  // Only intercept real game folders with DB record; otherwise let static handle
+  try {
+    if (!req.params.gameSlug || req.params.gameSlug.startsWith('api')) return next();
+    const slug = req.params.gameSlug;
+    const game = getGameBySlug.get(slug);
+    const pagePath = path.join(__dirname, slug, 'index.html');
+    if (!game || !fs.existsSync(pagePath)) return next();
+
+    const html = fs.readFileSync(pagePath, 'utf8');
+    const year = new Date().getFullYear();
+    const base = getSiteBaseUrl(req).replace(/\/+$/, '');
+    const canonical = base + '/' + slug + '/';
+
+    const pageTitle = (game.seo_title && String(game.seo_title).trim())
+      ? String(game.seo_title).trim()
+      : `Download ${game.title} for Android ${year} - ModXNet`;
+    const pageDesc = (game.seo_description && String(game.seo_description).trim())
+      ? String(game.seo_description).trim()
+      : `Download ${game.title} v${String(game.version || '').replace(/^v/i, '')} MOD APK for Android. Free download on ModXNet.`;
+    const pageKeywords = (game.seo_keywords && String(game.seo_keywords).trim())
+      ? String(game.seo_keywords).trim()
+      : `${game.title} mobile, ${game.title} android, ${game.title} apk, ${game.title} mod, download ${game.title}`;
+
+    res.type('html').send(injectSeoTags({
+      html,
+      title: pageTitle,
+      description: pageDesc,
+      keywords: pageKeywords,
+      canonical
+    }));
+  } catch (e) {
+    next();
+  }
+});
+
 // Order: API routes already defined above → static files → SPA fallback last
 app.use(express.static(path.join(__dirname), {
   extensions: ['html'],

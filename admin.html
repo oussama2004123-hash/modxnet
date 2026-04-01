@@ -14,7 +14,7 @@
     <div class="auth-gate-inner">
       <div class="auth-logo"><i class="fas fa-shield-alt"></i></div>
       <h2>Admin Access Required</h2>
-      <p>Log in with your admin account to manage ModXnet.</p>
+      <p>On the main site, sign in with <strong>modxnet.support@gmail.com</strong> (Google or email/password), then open this page again.</p>
       <a href="/?action=login" class="auth-gate-btn"><i class="fas fa-sign-in-alt"></i> Go to Login</a>
     </div>
   </div>
@@ -65,6 +65,7 @@
             <button class="action-btn" onclick="switchTab('adblue')"><i class="fas fa-ad"></i> Ad Settings</button>
             <button class="action-btn" onclick="switchTab('users')"><i class="fas fa-users"></i> Manage Users</button>
             <button class="action-btn" onclick="switchTab('trash')"><i class="fas fa-trash-restore"></i> View Trash</button>
+            <button class="action-btn action-btn-warn" type="button" id="openComebackEmailBtn"><i class="fas fa-envelope-open-text"></i> Email all users</button>
           </div>
         </div>
       </section>
@@ -180,6 +181,29 @@
                   <option value="0">No — Hidden</option>
                 </select>
               </div>
+            </div>
+          </div>
+
+          <!-- Section 1B: SEO -->
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h4><i class="fas fa-magnifying-glass"></i> SEO</h4>
+              <small class="editor-section-hint">Used for Google search: title, description, keywords</small>
+            </div>
+            <div class="form-group">
+              <label>SEO Title</label>
+              <input type="text" id="gameSeoTitle" placeholder="Download [Game Name] for Android 2026 - ModXNet">
+              <small class="form-hint">Recommended: ~50–60 characters.</small>
+            </div>
+            <div class="form-group">
+              <label>SEO Description</label>
+              <textarea id="gameSeoDescription" class="form-control" placeholder="Download [Game Name] v[version] MOD APK for Android. Short description. Free download on ModXNet."></textarea>
+              <small class="form-hint">Recommended: ~140–160 characters.</small>
+            </div>
+            <div class="form-group">
+              <label>SEO Keywords</label>
+              <input type="text" id="gameSeoKeywords" placeholder="gta 5 mobile, gta 5 android, gta 5 apk, gta 5 mod, download gta 5">
+              <small class="form-hint">Comma-separated keywords.</small>
             </div>
           </div>
 
@@ -400,6 +424,45 @@
               <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Come-back email campaign modal -->
+      <div class="modal-overlay" id="comebackEmailModal">
+        <div class="modal modal--wide modal--email-blast">
+          <div class="modal-header">
+            <h3><i class="fas fa-paper-plane" style="color:var(--primary);margin-right:8px"></i> Broadcast email to users</h3>
+            <button type="button" class="modal-close" id="comebackEmailModalClose" aria-label="Close"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="modal-form comeback-email-modal-body">
+            <p class="comeback-lead">Edit the message below, then send <strong>one personalized email per user</strong>. In the subject and body, use <code>{{username}}</code> for their display name and <code>{{siteUrl}}</code> for your site base (no trailing slash). Example link: <code>&lt;a href="{{siteUrl}}/"&gt;Visit ModXNet&lt;/a&gt;</code></p>
+            <div class="comeback-meta">
+              <span><i class="fas fa-link"></i> <code>{{siteUrl}}</code> resolves to: <code id="comebackSiteUrlPreview">—</code></span>
+              <span><i class="fas fa-users"></i> Recipients: <strong id="comebackRecipientCount">—</strong></span>
+            </div>
+            <div class="form-group comeback-field">
+              <label for="comebackSubject">Subject line</label>
+              <input type="text" id="comebackSubject" class="comeback-input-subject" maxlength="500" autocomplete="off">
+            </div>
+            <div class="form-group comeback-field">
+              <label for="comebackHtml">HTML body <span class="label-hint">(allowed: tags for formatting &amp; links)</span></label>
+              <textarea id="comebackHtml" class="comeback-editor-html" rows="14" spellcheck="true"></textarea>
+            </div>
+            <div class="form-group comeback-field">
+              <label for="comebackText">Plain-text body <span class="label-hint">(optional — leave empty to auto-build from HTML)</span></label>
+              <textarea id="comebackText" class="comeback-editor-text" rows="8" spellcheck="true"></textarea>
+            </div>
+            <div class="comeback-toolbar">
+              <button type="button" class="cancel-btn" id="comebackResetDefaultsBtn"><i class="fas fa-undo"></i> Reset to default template</button>
+            </div>
+            <label class="comeback-check-label">
+              <input type="checkbox" id="comebackConfirmCheck"> I understand this will email <strong>all</strong> users with a valid address.
+            </label>
+            <div class="form-actions comeback-actions">
+              <button type="button" class="cancel-btn" id="comebackCancelBtn">Close</button>
+              <button type="button" class="save-btn" id="comebackSendBtn" disabled><i class="fas fa-paper-plane"></i> Send emails</button>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -74,7 +74,7 @@ Your IP address has been logged for security purposes.
   <!-- Header -->
   <header class="header">
     <nav class="nav-container">
-      <a href="index.html" class="logo">
+      <a href="/" class="logo">
         <img src="https://i.ibb.co/gbsY945Q/Black-and-Green-Illustrative-E-Sports-Gaming-Logo-2-removebg.png" alt="modXnet.com Logo" loading="lazy">
         <div class="logo-text">
           <span>ModXnet.com</span>
@@ -96,8 +96,8 @@ Your IP address has been logged for security purposes.
 -->
       <div class="desktop-nav">
         <ul class="nav-links">
-          <li><a href="index.html">Home</a></li>
-          <li><a href="games.html">Games</a></li>
+          <li><a href="/">Home</a></li>
+          <li><a href="/all-games">Games</a></li>
           <li><a href="trending.html">Trending</a></li>
           <li><a href="blog.html">Blog</a></li>
         </ul>
@@ -113,8 +113,11 @@ Your IP address has been logged for security purposes.
         </div>
       </div>
       
-      <button class="google-login-btn" id="googleLoginBtn" type="button">
-        <i class="fab fa-google"></i> Login
+      <button class="google-login-btn" id="googleLoginBtn" type="button" title="Sign in" aria-label="Sign in">
+        <div class="login-icon-circle">
+          <i class="fas fa-user" aria-hidden="true"></i>
+        </div>
+        <span class="login-btn-text">Log in</span>
       </button>
     </nav>
     
@@ -138,8 +141,8 @@ Your IP address has been logged for security purposes.
 ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø¹Ù†ÙˆØ§Ù† IP Ø§Ù„Ø®Ø§Øµ Ø¨Ùƒ Ù„Ø£ØºØ±Ø§Ø¶ Ø£Ù…Ù†ÙŠØ©.
 -->
       <ul class="mobile-nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="games.html">Games</a></li>
+        <li><a href="/">Home</a></li>
+        <li><a href="/all-games">Games</a></li>
         <li><a href="trending.html">Trending</a></li>
         <li><a href="blog.html">Blog</a></li>
       </ul>
@@ -194,6 +197,15 @@ Your IP address has been logged for security purposes.
         </div>
       </div>
     </div>
+    <!-- View Toggle (Grid / List) -->
+    <div class="view-toggle" aria-label="Change view">
+      <button type="button" class="view-toggle-btn" id="viewGridBtn" aria-pressed="false" title="Grid view">
+        <i class="fas fa-th"></i>
+      </button>
+      <button type="button" class="view-toggle-btn" id="viewListBtn" aria-pressed="false" title="List view">
+        <i class="fas fa-list"></i>
+      </button>
+    </div>
     <!-- Category Filter Chips -->
     <div class="search-filters" id="searchFilters">
       <button class="filter-chip active" data-filter="all"><i class="fas fa-gamepad"></i> All</button>
@@ -218,8 +230,8 @@ Your IP address has been logged for security purposes.
 -->
   <!-- Games List Section -->
   <section class="games-list" id="gamesList">
-    <div class="games-container">
-      <div class="game-card" data-game="beamng" data-link="/BeamNG-drive-Mobile/" data-category="racing simulation">
+    <div class="games-container view-grid">
+      <div class="game-card" data-game="beamng" data-link="/BeamNG-drive-Mobile/" data-category="racing simulation" data-rating="4">
         <img src="https://avatars.githubusercontent.com/u/6404024?s=280&v=4" alt="BeamNG.drive Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">BeamNG.drive Mobile</div>
@@ -229,7 +241,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
       
-      <div class="game-card" data-game="gta5" data-link="/GTA-5-Mobile/" data-category="openworld action">
+      <div class="game-card" data-game="gta5" data-link="/GTA-5-Mobile/" data-category="openworld action" data-rating="4">
         <img src="https://i.pinimg.com/736x/8f/01/03/8f010359c57da7850e723fa17a53b55e.jpg" alt="GTA V Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">GTA V Mobile</div>
@@ -239,7 +251,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
       
-      <div class="game-card" data-game="assetto" data-link="/Assetto-Corsa-Mobile/" data-category="racing simulation">
+      <div class="game-card" data-game="assetto" data-link="/Assetto-Corsa-Mobile/" data-category="racing simulation" data-rating="5">
         <img src="https://i.postimg.cc/mgStnz0K/Picsart-25-10-16-14-24-02-706.jpg" alt="Assetto Corsa Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">Assetto Corsa Mobile</div>
@@ -249,7 +261,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
       
-      <div class="game-card" data-game="forza" data-link="/Forza-Horizon-5/" data-category="racing openworld">
+      <div class="game-card" data-game="forza" data-link="/Forza-Horizon-5/" data-category="racing openworld" data-rating="4">
         <img src="https://images.seeklogo.com/logo-png/40/1/forza-horizon-5-logo-png_seeklogo-406612.png" alt="Forza Horizon 5 Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">Forza Horizon 5 Mobile</div>
@@ -259,7 +271,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
 
-      <div class="game-card" data-game="eurotruck" data-link="/ETS-2-Mobile/" data-category="simulation">
+      <div class="game-card" data-game="eurotruck" data-link="/ETS-2-Mobile/" data-category="simulation" data-rating="4">
         <img src="https://i.pinimg.com/564x/32/ae/e5/32aee5919f1c4e81da58627d21b3323a.jpg" alt="Euro Truck Simulator 2 Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">Euro Truck Simulator 2</div>
@@ -269,7 +281,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
 
-      <div class="game-card" data-game="watchdogs" data-link="/Watchdogs2-Mobile/" data-category="openworld action">
+      <div class="game-card" data-game="watchdogs" data-link="/Watchdogs2-Mobile/" data-category="openworld action" data-rating="3.5">
         <img src="https://images.steamusercontent.com/ugc/180542583658076938/524D520DFF7C6671219DF93F38B195D435B93786/?imw=637&imh=358&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true" alt="Watch Dogs 2 Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">Watch Dogs 2 Mobile</div>
@@ -279,7 +291,7 @@ Your IP address has been logged for security purposes.
         <i class="fas fa-chevron-right game-arrow"></i>
       </div>
 
-      <div class="game-card" data-game="motorfest" data-link="/The-Crew-Motorfest-Mobile/" data-category="racing openworld">
+      <div class="game-card" data-game="motorfest" data-link="/The-Crew-Motorfest-Mobile/" data-category="racing openworld" data-rating="4.5">
         <img src="https://i.postimg.cc/8Pq2KNXW/TCM-KA-low-Rez.jpg" alt="The Crew MotorFest Mobile" class="game-icon" loading="lazy">
         <div class="game-info">
           <div class="game-title">The Crew MotorFest</div>
@@ -292,7 +304,7 @@ Your IP address has been logged for security purposes.
     </div>
     
     <!-- View All Button -->
-    <a href="/games.html" class="view-all-btn">
+    <a href="/all-games" class="view-all-btn">
       View All Games <i class="fas fa-chevron-right"></i>
     </a>
   </section>
@@ -321,6 +333,7 @@ Your IP address has been logged for security purposes.
           <textarea id="message" placeholder="How can we help you?" rows="4" required></textarea>
           <span class="error" id="messageError"></span>
         </div>
+        <p class="contact-form-hint">We receive your message exactly as you write it. When available, a professional English copy is also included in the email to our team.</p>
         <button type="submit" class="contact-submit">
           <i class="fas fa-paper-plane"></i> Send Message
         </button>
@@ -369,10 +382,10 @@ Your IP address has been logged for security purposes.
     </div>
   </footer>
 
-  <!-- Floating Help Button -->
-  <div class="help-button" id="helpButton">
-    <i class="fas fa-question"></i>
-    <span class="help-button-tooltip" id="helpTooltip">Need help?</span>
+  <!-- Download help (chat-style, no API) -->
+  <div class="help-button help-button-chat" id="helpButton" title="Download help chat">
+    <i class="fas fa-comment-dots"></i>
+    <span class="help-button-tooltip" id="helpTooltip">Help</span>
   </div>
 
   <!-- Game Detail Modal -->
@@ -430,43 +443,21 @@ Your IP address has been logged for security purposes.
     </div>
   </div>
 
-  <!-- Help Modal -->
-  <div class="modal" id="helpModal">
-    <div class="modal-content">
-      <span class="close-modal" id="closeHelpModal">&times;</span>
-      <h3 class="modal-title">Help Center</h3>
-      <div class="modal-body">
-        <h4>How to Download Games</h4>
-        <p>To access our free downloads, we require users to complete a simple offer. These offers help support our platform and keep it free for everyone.</p>
-        
-        <p>The offers may include:</p>
-        <ul style="margin: 15px 0 20px 20px;">
-          <li style="margin-bottom: 8px;">Trying an app or game</li>
-          <li style="margin-bottom: 8px;">Completing a short survey</li>
-          <li style="margin-bottom: 8px;">Signing up for a service</li>
-        </ul>
-        
-        <p>All offers are safe and legitimate. Thank you for your support!</p>
-        
-        <h4 style="margin-top: 20px;">Download Steps:</h4>
-        <ol style="margin-left: 20px;">
-          <li style="margin-bottom: 10px;">Click on the game you want to download</li>
-          <li style="margin-bottom: 10px;">Complete the simple offer (usually takes less than 1 minute)</li>
-          <li style="margin-bottom: 10px;">Get your download link</li>
-          <li style="margin-bottom: 10px;">Install and enjoy!</li>
-        </ol>
-        
-        <div style="margin-top: 25px; padding: 15px; background: var(--darker); border-radius: var(--border-radius);">
-          <h4 style="color: var(--primary); margin-bottom: 10px;">Installation Tips:</h4>
-          <ul style="margin-left: 20px;">
-            <li style="margin-bottom: 8px;">Make sure to enable "Unknown Sources" in your device settings</li>
-            <li style="margin-bottom: 8px;">Some games may require additional data files after installation</li>
-            <li style="margin-bottom: 8px;">If you encounter issues, try clearing the app cache</li>
-          </ul>
+  <!-- Download help (chat UI, 3 quick questions — client-side only) -->
+  <div class="modal help-chat-modal" id="helpChatModal">
+    <div class="modal-content help-chat-content">
+      <span class="close-modal" id="closeHelpChatModal">&times;</span>
+      <div class="help-chat-header">
+        <h3 class="modal-title help-chat-title" id="helpChatTitle"><i class="fas fa-robot"></i> <span id="helpChatTitleText">Download helper</span></h3>
+        <p class="help-chat-sub"><strong id="helpChatSubLead">All games on ModXnet are free.</strong> <span id="helpChatSubTail">Pick one of the most asked questions below.</span></p>
+        <div class="help-chat-lang-row">
+          <label class="help-chat-lang-label" for="helpChatLang"><i class="fas fa-globe" aria-hidden="true"></i> Conversation language</label>
+          <select id="helpChatLang" class="help-chat-lang-select" autocomplete="off"></select>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" id="closeHelpBtn">Got it, thanks!</button>
+      <div class="help-chat-messages" id="helpChatMessages" aria-live="polite"></div>
+      <div class="help-chat-composer help-chat-composer--readonly">
+        <span class="help-chat-composer-hint"><i class="fas fa-hand-pointer" aria-hidden="true"></i> <span id="helpChatComposerHintText">Tap a question in the chat to reply</span></span>
       </div>
     </div>
   </div>
@@ -536,12 +527,12 @@ Your IP address has been logged for security purposes.
         <div class="avatar-picker-section">
           <label class="avatar-picker-label">Choose your avatar</label>
           <div class="avatar-picker-preview">
-            <img id="selectedAvatarPreview" src="https://api.dicebear.com/7.x/bottts-neutral/svg?seed=gamer1" alt="Avatar">
+            <img id="selectedAvatarPreview" src="https://api.dicebear.com/7.x/micah/svg?seed=gamer1&backgroundColor=transparent" alt="Avatar">
           </div>
           <div class="avatar-picker-grid" id="avatarPickerGrid">
             <!-- Filled by JS -->
           </div>
-          <input type="hidden" id="registerAvatarUrl" value="https://api.dicebear.com/7.x/bottts-neutral/svg?seed=gamer1">
+          <input type="hidden" id="registerAvatarUrl" value="https://api.dicebear.com/7.x/micah/svg?seed=gamer1&backgroundColor=transparent">
           <div class="avatar-picker-actions">
             <button type="button" class="avatar-action-btn" id="randomizeAvatarBtn"><i class="fas fa-dice"></i> Random</button>
             <label class="avatar-action-btn avatar-upload-label" for="avatarFileInput"><i class="fas fa-upload"></i> Upload</label>
@@ -622,7 +613,8 @@ Your IP address has been logged for security purposes.
   </button>
     
   <!-- JavaScript -->
-  <script src="script.js"></script>
+  <script src="/help-chat-i18n.js"></script>
+  <script src="/script.js"></script>
 </body>
 </html>
 <!-- 

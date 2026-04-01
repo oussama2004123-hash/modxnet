@@ -244,6 +244,39 @@ body { font-family:'Exo 2',sans-serif; background:var(--bg); color:var(--text); 
   background:var(--surface); border:1px solid var(--border2); border-radius:16px;
   max-width:560px; width:100%; max-height:90vh; overflow-y:auto;
 }
+.modal.modal--wide { max-width:640px; }
+.modal.modal--email-blast { max-width:min(720px, 96vw); }
+
+.action-btn-warn {
+  border:1px solid rgba(255,180,80,0.35);
+  background:rgba(255,180,80,0.08);
+  color:#ffc46b;
+}
+.action-btn-warn:hover {
+  background:rgba(255,180,80,0.15);
+  border-color:rgba(255,180,80,0.5);
+}
+
+.comeback-email-modal-body .comeback-lead { font-size:0.86rem; color:var(--text2); line-height:1.55; margin:0 0 14px; }
+.comeback-email-modal-body .comeback-lead code { font-size:0.78rem; color:var(--primary); }
+.comeback-meta {
+  display:flex; flex-wrap:wrap; gap:12px 20px; font-size:0.8rem; color:var(--text2); margin-bottom:14px;
+}
+.comeback-meta code { font-size:0.75rem; color:var(--primary); word-break:break-all; }
+.comeback-field label .label-hint { font-weight:400; color:var(--text3); font-size:0.78rem; }
+.comeback-input-subject { width:100%; }
+.comeback-editor-html, .comeback-editor-text {
+  width:100%; min-height:120px; padding:12px 14px; background:var(--bg); border:1px solid var(--border2);
+  border-radius:var(--radius-sm); color:var(--text); font-family:ui-monospace,'Cascadia Code',Consolas,monospace;
+  font-size:0.8rem; line-height:1.45; resize:vertical;
+}
+.comeback-editor-html:focus, .comeback-editor-text:focus {
+  outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim);
+}
+.comeback-toolbar { margin-bottom:12px; }
+.comeback-check-label { display:flex; align-items:flex-start; gap:10px; font-size:0.84rem; color:var(--text2); cursor:pointer; margin-bottom:4px; margin-top:8px; }
+.comeback-check-label input { margin-top:3px; flex-shrink:0; }
+.comeback-actions { margin-top:8px !important; }
 .modal-header {
   padding:18px 20px; border-bottom:1px solid var(--border);
   display:flex; align-items:center; justify-content:space-between;

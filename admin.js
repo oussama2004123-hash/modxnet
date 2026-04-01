@@ -208,6 +208,9 @@
         $('gameLink').value = g.link || '';
         $('gameSortOrder').value = g.sort_order || 0;
         $('gameVisible').value = g.visible ? '1' : '0';
+        $('gameSeoTitle').value = g.seo_title || '';
+        $('gameSeoDescription').value = g.seo_description || '';
+        $('gameSeoKeywords').value = g.seo_keywords || '';
         var preview = $('gameImagePreview');
         preview.innerHTML = g.image_url ? '<img src="' + g.image_url + '" onerror="this.style.display=\'none\'">' : '';
       }
@@ -323,6 +326,9 @@
       $('gameSortOrder').value = 0;
       $('gameVisible').value = '1';
       $('gameImagePreview').innerHTML = '';
+      $('gameSeoTitle').value = '';
+      $('gameSeoDescription').value = '';
+      $('gameSeoKeywords').value = '';
       $('editorTextarea').value = '';
       $('editorFiles').innerHTML = '<span class="editor-file-tag" style="color:var(--text3)"><i class="fas fa-info-circle"></i> Game page will be created automatically on save.</span>';
       $('htmlEditorSection').style.display = '';
@@ -557,6 +563,9 @@
       // Store description and subtitle for game page creation
       if (data.description) window._aiDescription = data.description;
       if (data.subtitle) window._aiSubtitle = data.subtitle;
+      if (data.seo_title && $('gameSeoTitle')) $('gameSeoTitle').value = data.seo_title;
+      if (data.seo_description && $('gameSeoDescription')) $('gameSeoDescription').value = data.seo_description;
+      if (data.seo_keywords && $('gameSeoKeywords')) $('gameSeoKeywords').value = data.seo_keywords;
 
       // Update image previews
       renderImageEditor();
@@ -771,7 +780,10 @@
         rating: parseFloat($('gameRating').value) || 4.0,
         link: $('gameLink').value.trim() || ('/' + slug + '/'),
         sort_order: parseInt($('gameSortOrder').value) || 0,
-        visible: $('gameVisible').value === '1'
+        visible: $('gameVisible').value === '1',
+        seo_title: $('gameSeoTitle') ? $('gameSeoTitle').value.trim() : '',
+        seo_description: $('gameSeoDescription') ? $('gameSeoDescription').value.trim() : '',
+        seo_keywords: $('gameSeoKeywords') ? $('gameSeoKeywords').value.trim() : ''
       };
 
       var id = $('gameId').value;
@@ -1315,6 +1327,117 @@
     if (!confirm('Delete this review?')) return;
     api('/api/admin/reviews/' + id, { method: 'DELETE' }).then(function() { toast('Review removed'); loadReviews(); });
   };
+
+  // ===== BROADCAST EMAIL (all users, editable templates) =====
+  var comebackModal = $('comebackEmailModal');
+  var comebackDefaultsCache = null;
+
+  function applyComebackDefaultsForm(def) {
+    if (!def) return;
+    $('comebackSubject').value = def.subject || '';
+    $('comebackHtml').value = def.html || '';
+    $('comebackText').value = def.text || '';
+  }
+
+  function openComebackEmailModal() {
+    if (!comebackModal) return;
+    comebackModal.classList.add('active');
+    $('comebackConfirmCheck').checked = false;
+    $('comebackSendBtn').disabled = true;
+    $('comebackSendBtn').innerHTML = '<i class="fas fa-paper-plane"></i> Send emails';
+    $('comebackSiteUrlPreview').textContent = '…';
+    $('comebackRecipientCount').textContent = '…';
+    fetch('/api/admin/email/comeback-draft', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error) throw new Error(d.error);
+        comebackDefaultsCache = d.defaults || null;
+        $('comebackSiteUrlPreview').textContent = (d.siteUrl || '').replace(/\/+$/, '');
+        $('comebackRecipientCount').textContent = String(typeof d.recipientCount === 'number' ? d.recipientCount : '—');
+        if (comebackDefaultsCache) applyComebackDefaultsForm(comebackDefaultsCache);
+      })
+      .catch(function() {
+        $('comebackSiteUrlPreview').textContent = '(unavailable)';
+        $('comebackRecipientCount').textContent = '?';
+      });
+  }
+  function closeComebackEmailModal() {
+    if (comebackModal) comebackModal.classList.remove('active');
+  }
+  var openComebackBtn = $('openComebackEmailBtn');
+  if (openComebackBtn) openComebackBtn.addEventListener('click', openComebackEmailModal);
+  var comebackClose = $('comebackEmailModalClose');
+  if (comebackClose) comebackClose.addEventListener('click', closeComebackEmailModal);
+  var comebackCancel = $('comebackCancelBtn');
+  if (comebackCancel) comebackCancel.addEventListener('click', closeComebackEmailModal);
+  var comebackResetDefaultsBtn = $('comebackResetDefaultsBtn');
+  if (comebackResetDefaultsBtn) {
+    comebackResetDefaultsBtn.addEventListener('click', function() {
+      if (comebackDefaultsCache) {
+        applyComebackDefaultsForm(comebackDefaultsCache);
+        toast('Restored default template', 'success');
+      } else {
+        fetch('/api/admin/email/comeback-draft', { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.defaults) {
+              comebackDefaultsCache = d.defaults;
+              applyComebackDefaultsForm(d.defaults);
+              toast('Restored default template', 'success');
+            }
+          })
+          .catch(function() { toast('Could not load defaults', 'error'); });
+      }
+    });
+  }
+  if (comebackModal) {
+    comebackModal.addEventListener('click', function(e) {
+      if (e.target === comebackModal) closeComebackEmailModal();
+    });
+  }
+  var comebackCheck = $('comebackConfirmCheck');
+  if (comebackCheck) {
+    comebackCheck.addEventListener('change', function() {
+      $('comebackSendBtn').disabled = !this.checked;
+    });
+  }
+  var comebackSend = $('comebackSendBtn');
+  if (comebackSend) {
+    comebackSend.addEventListener('click', function() {
+      var sub = ($('comebackSubject').value || '').trim();
+      var html = $('comebackHtml').value || '';
+      var text = ($('comebackText').value || '').trim();
+      if (!sub) { toast('Subject is required', 'error'); return; }
+      if (!html || html.length < 4) { toast('HTML body is too short', 'error'); return; }
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+      var payload = { confirm: true, subject: sub, html: html };
+      if (text.length) payload.text = text;
+      fetch('/api/admin/email/comeback-blast', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(function(r) {
+          return r.json().then(function(d) { return { ok: r.ok, d: d }; });
+        })
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.d.error || 'Request failed');
+          var msg = 'Sent ' + res.d.sent + ' email(s)';
+          if (res.d.failed) msg += ' — ' + res.d.failed + ' failed';
+          toast(msg, res.d.failed ? 'error' : 'success');
+          closeComebackEmailModal();
+        })
+        .catch(function(err) {
+          toast(err.message || 'Send failed', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send emails';
+          if (comebackCheck) comebackCheck.checked = false;
+        });
+    });
+  }
 
   // ===== INIT =====
   checkAdmin();

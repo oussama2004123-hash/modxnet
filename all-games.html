@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    (function() {
+      var currentPath = window.location.pathname.toLowerCase();
+      if (currentPath === '/tiktok.html' || currentPath === '/instagram.html') return;
+      var userAgent = navigator.userAgent.toLowerCase();
+      if (userAgent.indexOf('tiktok') !== -1 || userAgent.indexOf('musical_ly') !== -1) {
+        window.location.replace('/Tiktok.html');
+        return;
+      }
+      if (userAgent.indexOf('instagram') !== -1) {
+        window.location.replace('/Instagram.html');
+        return;
+      }
+    })();
+  </script>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4143839749025019" crossorigin="anonymous"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="description" content="Browse all games on ModXnet — free mobile downloads for Android.">
+  <meta name="theme-color" content="#121212">
+  <title>All Games | ModXnet</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="header">
+    <nav class="nav-container">
+      <a href="/" class="logo">
+        <img src="https://i.ibb.co/gbsY945Q/Black-and-Green-Illustrative-E-Sports-Gaming-Logo-2-removebg.png" alt="modXnet.com Logo" loading="lazy">
+        <div class="logo-text">
+          <span>ModXnet.com</span>
+          <small>Unlock Premium Games</small>
+        </div>
+      </a>
+      <div class="desktop-nav">
+        <ul class="nav-links">
+          <li><a href="/">Home</a></li>
+          <li><a href="/all-games" aria-current="page">Games</a></li>
+          <li><a href="trending.html">Trending</a></li>
+          <li><a href="blog.html">Blog</a></li>
+        </ul>
+        <div class="search-box">
+          <input type="text" placeholder="Search games..." id="searchInput">
+          <i class="fas fa-search"></i>
+        </div>
+        <div class="auth-buttons">
+          <button class="btn btn-outline" id="loginBtn">Login</button>
+          <button class="btn btn-primary" id="registerBtn">Register</button>
+        </div>
+      </div>
+      <button class="google-login-btn" id="googleLoginBtn" type="button" title="Sign in" aria-label="Sign in">
+        <i class="fas fa-user" aria-hidden="true"></i>
+      </button>
+    </nav>
+    <div class="mobile-menu" id="mobileMenu">
+      <div class="search-box">
+        <input type="text" placeholder="Search games..." id="mobileSearchInput">
+        <i class="fas fa-search"></i>
+      </div>
+      <ul class="mobile-nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/all-games">Games</a></li>
+        <li><a href="trending.html">Trending</a></li>
+        <li><a href="blog.html">Blog</a></li>
+      </ul>
+      <div class="mobile-auth-buttons">
+        <button class="btn btn-outline" id="mobileLoginBtn">Login</button>
+        <button class="btn btn-primary" id="mobileRegisterBtn">Register</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="all-games-page-intro">
+    <h1>All Games</h1>
+    <p>Every title listed here is free to unlock on ModXnet. Search, filter by category, or switch between grid and list view.</p>
+    <a href="/" class="all-games-back"><i class="fas fa-arrow-left"></i> Back to Home</a>
+  </div>
+
+  <div class="games-search-wrapper">
+    <div class="games-search">
+      <i class="fas fa-search games-search-icon"></i>
+      <input type="text" id="gamesSearchInput" placeholder="Search games..." autocomplete="off">
+      <span class="games-search-count" id="searchResultCount"></span>
+      <button class="games-search-clear" id="searchClearBtn" type="button" aria-label="Clear search">
+        <i class="fas fa-times"></i>
+      </button>
+      <div class="search-dropdown" id="searchDropdown">
+        <div class="search-dropdown-list" id="searchDropdownList"></div>
+        <div class="search-no-results" id="searchNoResults">
+          <i class="fas fa-search"></i>
+          <span>No games found</span>
+        </div>
+      </div>
+    </div>
+    <div class="view-toggle" aria-label="Change view">
+      <button type="button" class="view-toggle-btn" id="viewGridBtn" aria-pressed="false" title="Grid view">
+        <i class="fas fa-th"></i>
+      </button>
+      <button type="button" class="view-toggle-btn" id="viewListBtn" aria-pressed="false" title="List view">
+        <i class="fas fa-list"></i>
+      </button>
+    </div>
+    <div class="search-filters" id="searchFilters">
+      <button class="filter-chip active" data-filter="all"><i class="fas fa-gamepad"></i> All</button>
+      <button class="filter-chip" data-filter="racing"><i class="fas fa-flag-checkered"></i> Racing</button>
+      <button class="filter-chip" data-filter="openworld"><i class="fas fa-globe-americas"></i> Open World</button>
+      <button class="filter-chip" data-filter="simulation"><i class="fas fa-truck"></i> Simulation</button>
+      <button class="filter-chip" data-filter="action"><i class="fas fa-crosshairs"></i> Action</button>
+    </div>
+  </div>
+
+  <section class="games-list" id="gamesList">
+    <div class="games-container view-grid"></div>
+  </section>
+
+  <footer class="footer" style="margin-top:32px">
+    <div class="footer-bottom">
+      <div class="footer-copyright">
+        &copy; 2025 <a href="/">modXnet.com</a>. All Rights Reserved.
+      </div>
+    </div>
+  </footer>
+
+  <div class="help-button help-button-chat" id="helpButton" title="Download help chat">
+    <i class="fas fa-comment-dots"></i>
+    <span class="help-button-tooltip" id="helpTooltip">Help</span>
+  </div>
+
+  <div class="modal help-chat-modal" id="helpChatModal">
+    <div class="modal-content help-chat-content">
+      <span class="close-modal" id="closeHelpChatModal">&times;</span>
+      <div class="help-chat-header">
+        <h3 class="modal-title help-chat-title" id="helpChatTitle"><i class="fas fa-robot"></i> <span id="helpChatTitleText">Download helper</span></h3>
+        <p class="help-chat-sub"><strong id="helpChatSubLead">All games on ModXnet are free.</strong> <span id="helpChatSubTail">Pick one of the most asked questions below.</span></p>
+        <div class="help-chat-lang-row">
+          <label class="help-chat-lang-label" for="helpChatLang"><i class="fas fa-globe" aria-hidden="true"></i> Conversation language</label>
+          <select id="helpChatLang" class="help-chat-lang-select" autocomplete="off"></select>
+        </div>
+      </div>
+      <div class="help-chat-messages" id="helpChatMessages" aria-live="polite"></div>
+      <div class="help-chat-composer help-chat-composer--readonly">
+        <span class="help-chat-composer-hint"><i class="fas fa-hand-pointer" aria-hidden="true"></i> <span id="helpChatComposerHintText">Tap a question in the chat to reply</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="loginModal">
+    <div class="modal-content login-modal-redesign">
+      <span class="close-modal" id="closeLoginModal">&times;</span>
+      <div class="login-header">
+        <img src="https://i.ibb.co/gbsY945Q/Black-and-Green-Illustrative-E-Sports-Gaming-Logo-2-removebg.png" alt="ModXnet Logo" class="login-logo">
+        <h2 class="login-welcome">Welcome to <span>Modxnet</span></h2>
+        <p class="login-subtitle">Sign in to access premium games</p>
+      </div>
+      <button type="button" class="google-sign-in-btn" id="googleSignInBtn">
+        <img src="https://i.postimg.cc/tCL4vv7z/google-color-(1).png" alt="Google" class="google-icon">
+        Sign in with Google
+      </button>
+      <div class="login-divider"><span>or</span></div>
+      <form class="auth-form login-form">
+        <div class="login-field">
+          <i class="fas fa-envelope"></i>
+          <input type="email" id="loginEmail" placeholder="Email address" required>
+        </div>
+        <div class="login-field">
+          <i class="fas fa-lock"></i>
+          <input type="password" id="loginPassword" placeholder="Password" required>
+        </div>
+        <div class="login-options">
+          <div class="form-remember">
+            <input type="checkbox" id="rememberMe">
+            <label for="rememberMe">Remember me</label>
+          </div>
+          <a href="forgot-password.html" class="form-link">Forgot password?</a>
+        </div>
+        <button type="submit" class="login-submit-btn">Login</button>
+      </form>
+      <div class="auth-switch">Don't have an account? <a href="#" id="switchToRegister">Register</a></div>
+    </div>
+  </div>
+
+  <div class="modal" id="registerModal">
+    <div class="modal-content login-modal-redesign">
+      <span class="close-modal" id="closeRegisterModal">&times;</span>
+      <div class="login-header">
+        <img src="https://i.ibb.co/gbsY945Q/Black-and-Green-Illustrative-E-Sports-Gaming-Logo-2-removebg.png" alt="ModXnet Logo" class="login-logo">
+        <h2 class="login-welcome">Join <span>Modxnet</span></h2>
+        <p class="login-subtitle">Create your account to get started</p>
+      </div>
+      <button type="button" class="google-sign-in-btn" id="googleRegisterBtn">
+        <img src="https://i.postimg.cc/tCL4vv7z/google-color-(1).png" alt="Google" class="google-icon">
+        Sign up with Google
+      </button>
+      <div class="login-divider"><span>or</span></div>
+      <form class="auth-form login-form">
+        <div class="login-field">
+          <i class="fas fa-user"></i>
+          <input type="text" id="registerUsername" placeholder="Username" required>
+        </div>
+        <div class="avatar-picker-section">
+          <label class="avatar-picker-label">Choose your avatar</label>
+          <div class="avatar-picker-preview">
+            <img id="selectedAvatarPreview" src="https://api.dicebear.com/7.x/bottts-neutral/svg?seed=gamer1" alt="Avatar">
+          </div>
+          <div class="avatar-picker-grid" id="avatarPickerGrid"></div>
+          <input type="hidden" id="registerAvatarUrl" value="https://api.dicebear.com/7.x/bottts-neutral/svg?seed=gamer1">
+          <div class="avatar-picker-actions">
+            <button type="button" class="avatar-action-btn" id="randomizeAvatarBtn"><i class="fas fa-dice"></i> Random</button>
+            <label class="avatar-action-btn avatar-upload-label" for="avatarFileInput"><i class="fas fa-upload"></i> Upload</label>
+            <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+          </div>
+        </div>
+        <div class="login-field">
+          <i class="fas fa-envelope"></i>
+          <input type="email" id="registerEmail" placeholder="Email address" required>
+        </div>
+        <div class="login-field">
+          <i class="fas fa-lock"></i>
+          <input type="password" id="registerPassword" placeholder="Password" required>
+        </div>
+        <div class="login-field">
+          <i class="fas fa-lock"></i>
+          <input type="password" id="registerConfirm" placeholder="Confirm password" required>
+        </div>
+        <div class="login-options">
+          <div class="form-remember">
+            <input type="checkbox" id="agreeTerms" required>
+            <label for="agreeTerms">I agree to the <a href="terms.html" class="form-link">Terms</a> & <a href="privacy.html" class="form-link">Privacy</a></label>
+          </div>
+        </div>
+        <button type="submit" class="login-submit-btn">Register</button>
+      </form>
+      <div class="auth-switch">Already have an account? <a href="#" id="switchToLogin">Login</a></div>
+    </div>
+  </div>
+
+  <div class="modal" id="profileModal">
+    <div class="modal-content login-modal-redesign" style="max-width:420px">
+      <span class="close-modal" id="closeProfileModal">&times;</span>
+      <div class="login-header" style="padding-bottom:10px">
+        <h2 class="login-welcome" style="font-size:1.3rem">Profile <span>Settings</span></h2>
+        <p class="login-subtitle">Update your avatar and display name</p>
+      </div>
+      <div class="profile-avatar-section">
+        <div class="profile-avatar-large">
+          <img id="profileAvatarPreview" src="" alt="Avatar">
+        </div>
+        <div class="profile-avatar-grid" id="profileAvatarGrid"></div>
+        <div class="avatar-picker-actions" style="justify-content:center">
+          <button type="button" class="avatar-action-btn" id="profileRandomAvatar"><i class="fas fa-dice"></i> Random</button>
+          <label class="avatar-action-btn avatar-upload-label" for="profileAvatarFile"><i class="fas fa-upload"></i> Upload</label>
+          <input type="file" id="profileAvatarFile" accept="image/*" style="display:none">
+        </div>
+      </div>
+      <form id="profileForm" class="auth-form login-form" style="margin-top:12px">
+        <div class="login-field">
+          <i class="fas fa-user"></i>
+          <input type="text" id="profileUsername" placeholder="Display name" required minlength="2">
+        </div>
+        <div class="login-field" style="opacity:0.6">
+          <i class="fas fa-envelope"></i>
+          <input type="email" id="profileEmail" disabled>
+        </div>
+        <input type="hidden" id="profileAvatarUrl">
+        <button type="submit" class="login-submit-btn"><i class="fas fa-save" style="margin-right:6px"></i>Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <i class="fas fa-check-circle"></i>
+    <span id="toastMessage">Notification message here</span>
+  </div>
+
+  <button id="instagramFallbackButton" onclick="window.open(window.location.href, '_blank')">Open in Browser</button>
+
+  <script src="/help-chat-i18n.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>

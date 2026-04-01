@@ -65,6 +65,9 @@ db.exec(`
     link TEXT NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0,
     visible INTEGER NOT NULL DEFAULT 1,
+    seo_title TEXT NOT NULL DEFAULT '',
+    seo_description TEXT NOT NULL DEFAULT '',
+    seo_keywords TEXT NOT NULL DEFAULT '',
     deleted_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -82,6 +85,13 @@ db.exec(`
     key_value TEXT NOT NULL DEFAULT '',
     script_url TEXT NOT NULL DEFAULT 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS help_faq (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
   );
 `);
 
@@ -119,14 +129,69 @@ if (adblueCount.cnt === 0) {
   insertManyAB(defaultAdblue);
 }
 
+// ========== SEED HELP FAQ (download help — no external API) ==========
+const helpFaqCount = db.prepare('SELECT COUNT(*) as cnt FROM help_faq').get();
+if (helpFaqCount.cnt === 0) {
+  const insertHelpFaq = db.prepare(
+    'INSERT INTO help_faq (question, answer, sort_order) VALUES (@question, @answer, @sort_order)'
+  );
+  const defaultFaqs = [
+    {
+      question: 'How do I download a game?',
+      answer: 'Open the game’s page on ModXnet and tap Download. Pick an offer from the list and complete it (for example: install the suggested app and use it for about 30 seconds). Return to ModXnet, keep the tab open on the site for roughly 30 seconds, and your download will unlock or start automatically once the offer is verified. All games on ModXnet are free for you—the offers support the platform.',
+      sort_order: 1
+    },
+    {
+      question: 'Are ModXnet games really free?',
+      answer: 'Yes. Every game in our catalog is free for you to unlock. You may need to complete a short third‑party offer first; that is how we keep the service free for everyone.',
+      sort_order: 2
+    },
+    {
+      question: 'Why do I have to complete an offer?',
+      answer: 'Offers help fund hosting and development so we can keep downloads free. Typical tasks include trying an app, a short survey, or similar—pick one from the list after you tap Download.',
+      sort_order: 3
+    },
+    {
+      question: 'How long until my download starts?',
+      answer: 'Many offers take about one to two minutes. After you finish the offer steps, come back to ModXnet and stay on the page for about 30 seconds so our system can confirm completion. Timing can vary slightly by offer.',
+      sort_order: 4
+    },
+    {
+      question: 'I finished the offer but nothing happens—what now?',
+      answer: 'Make sure you returned to the same browser tab on ModXnet, disabled strict blockers if needed, and waited at least 30 seconds on the page. Try completing another offer from the list if the first one did not register. If it still fails, use the contact form and we will help.',
+      sort_order: 5
+    },
+    {
+      question: 'Is it safe to install apps from offers?',
+      answer: 'Only install apps from sources shown in the offer flow and use official stores when prompted. ModXnet does not ask for your passwords or card details on the game download pages—never share those with strangers.',
+      sort_order: 6
+    },
+    {
+      question: 'Can I use ModXnet on my phone?',
+      answer: 'Yes. ModXnet works in your mobile browser. Open the site, choose your game, tap Download, and complete the offers like on desktop. Allow downloads from the browser when your device asks.',
+      sort_order: 7
+    }
+  ];
+  const tx = db.transaction((rows) => {
+    for (const r of rows) insertHelpFaq.run(r);
+  });
+  tx(defaultFaqs);
+}
+
 // Add deleted_at column to games if missing
 try { db.exec(`ALTER TABLE games ADD COLUMN deleted_at DATETIME DEFAULT NULL`); } catch(e) {}
+
+// Add SEO columns to games if missing
+try { db.exec(`ALTER TABLE games ADD COLUMN seo_title TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+try { db.exec(`ALTER TABLE games ADD COLUMN seo_description TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+try { db.exec(`ALTER TABLE games ADD COLUMN seo_keywords TEXT NOT NULL DEFAULT ''`); } catch(e) {}
 
 // Add sentiment columns to existing tables if they don't have them yet
 try { db.exec(`ALTER TABLE reviews ADD COLUMN sentiment TEXT DEFAULT 'positive'`); } catch(e) {}
 try { db.exec(`ALTER TABLE reviews ADD COLUMN expires_at DATETIME DEFAULT NULL`); } catch(e) {}
 try { db.exec(`ALTER TABLE comments ADD COLUMN sentiment TEXT DEFAULT 'positive'`); } catch(e) {}
 try { db.exec(`ALTER TABLE comments ADD COLUMN expires_at DATETIME DEFAULT NULL`); } catch(e) {}
+try { db.exec(`ALTER TABLE users ADD COLUMN welcome_email_sent INTEGER NOT NULL DEFAULT 0`); } catch(e) {}
 
 // ========== SENTIMENT ANALYSIS ==========
 const BAD_WORDS = [
@@ -234,6 +299,13 @@ const createUser = db.prepare(`
 const updateUserAvatar = db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
 const updateUserProfile = db.prepare('UPDATE users SET username = @username, avatar_url = @avatar_url WHERE id = @id');
 const updateUserByAdmin = db.prepare('UPDATE users SET username = @username, email = @email, avatar_url = @avatar_url WHERE id = @id');
+const markWelcomeEmailSent = db.prepare('UPDATE users SET welcome_email_sent = 1 WHERE id = ?');
+/** Attach Google ID when the same email already registered with password */
+const linkGoogleIdForUser = db.prepare(
+  'UPDATE users SET google_id = ? WHERE id = ? AND (google_id IS NULL OR google_id = \'\')'
+);
+
+const getHelpFaqs = db.prepare('SELECT id, question, answer FROM help_faq ORDER BY sort_order ASC, id ASC');
 
 // ========== REVIEW HELPERS ==========
 // Only return reviews that haven't expired
@@ -292,8 +364,8 @@ const getAllGamesAdmin = db.prepare('SELECT * FROM games WHERE deleted_at IS NUL
 const getTrashedGames = db.prepare('SELECT * FROM games WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC');
 const getGameBySlug = db.prepare('SELECT * FROM games WHERE slug = ?');
 const getGameById = db.prepare('SELECT * FROM games WHERE id = ?');
-const insertGame = db.prepare(`INSERT INTO games (slug, title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible) VALUES (@slug, @title, @image_url, @data_game, @category, @version, @release_date, @rating, @link, @sort_order, @visible)`);
-const updateGame = db.prepare(`UPDATE games SET title=@title, image_url=@image_url, data_game=@data_game, category=@category, version=@version, release_date=@release_date, rating=@rating, link=@link, sort_order=@sort_order, visible=@visible WHERE id=@id`);
+const insertGame = db.prepare(`INSERT INTO games (slug, title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible, seo_title, seo_description, seo_keywords) VALUES (@slug, @title, @image_url, @data_game, @category, @version, @release_date, @rating, @link, @sort_order, @visible, @seo_title, @seo_description, @seo_keywords)`);
+const updateGame = db.prepare(`UPDATE games SET title=@title, image_url=@image_url, data_game=@data_game, category=@category, version=@version, release_date=@release_date, rating=@rating, link=@link, sort_order=@sort_order, visible=@visible, seo_title=@seo_title, seo_description=@seo_description, seo_keywords=@seo_keywords WHERE id=@id`);
 const softDeleteGame = db.prepare("UPDATE games SET deleted_at = datetime('now') WHERE id = ?");
 const restoreGame = db.prepare('UPDATE games SET deleted_at = NULL WHERE id = ?');
 const permanentDeleteGame = db.prepare('DELETE FROM games WHERE id = ?');
@@ -326,6 +398,9 @@ module.exports = {
   updateUserAvatar,
   updateUserProfile,
   updateUserByAdmin,
+  markWelcomeEmailSent,
+  linkGoogleIdForUser,
+  getHelpFaqs,
   getReviewsByGame,
   createReview,
   userReviewExists,
