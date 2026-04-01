@@ -247,7 +247,7 @@
     .games-container.view-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
       align-items: stretch;
     }
 
@@ -438,9 +438,9 @@
     .games-container.view-grid .game-card {
       flex-direction: column;
       align-items: stretch;
-      padding: 14px 14px 12px;
+      padding: 10px 8px 10px;
       overflow: visible;
-      border-radius: 14px;
+      border-radius: 12px;
       background: #1a1a1a;
       border: 1px solid rgba(255, 255, 255, 0.06);
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
@@ -449,13 +449,14 @@
 
     .games-container.view-grid .game-icon {
       display: block;
-      width: 100%;
-      align-self: stretch;
+      width: min(58%, 108px);
+      max-width: 108px;
+      align-self: center;
       aspect-ratio: 1 / 1;
       height: auto;
       max-height: none;
-      margin: 0;
-      border-radius: 12px;
+      margin: 0 auto;
+      border-radius: 10px;
       object-fit: cover;
       object-position: center;
       flex-shrink: 0;
@@ -465,7 +466,7 @@
 
     .games-container.view-grid .game-info {
       width: 100%;
-      margin-top: 10px;
+      margin-top: 8px;
       padding: 0;
       box-sizing: border-box;
       gap: 4px;
@@ -474,13 +475,16 @@
     }
 
     .games-container.view-grid .game-title {
-      font-size: 0.9rem;
+      font-size: 0.82rem;
       font-weight: 700;
       width: 100%;
       text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      word-break: break-word;
+      line-height: 1.25;
+      display: block;
     }
 
     .games-container.view-grid .game-meta {
@@ -1971,11 +1975,11 @@
       margin: 20px 16px 8px;
     }
 
-    /* View toggle (Grid / List) */
+    /* View toggle (Grid / List) — below category chips, left-aligned */
     .view-toggle {
       display: flex;
       gap: 8px;
-      justify-content: flex-end;
+      justify-content: flex-start;
       margin-top: 10px;
     }
 
@@ -2721,10 +2725,11 @@
       }
 
       .view-toggle {
-        max-width: 900px;
-        margin-left: auto;
-        margin-right: auto;
-        padding: 0 40px;
+        justify-content: flex-start;
+        margin-left: 0;
+        margin-right: 0;
+        padding: 0;
+        max-width: none;
       }
 
       .games-search input {
