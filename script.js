@@ -164,38 +164,60 @@
         wrap.innerHTML = inner + '<span class="rating-num">' + r.toFixed(1) + '</span>';
       });
     }
+
+    /** Escape text/attributes so admin-edited titles & URLs cannot break card DOM */
+    function escapeAttr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+    function escapeHtmlText(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
     
     // ===== DYNAMIC GAME CARDS LOADER =====
     (function() {
       var container = document.querySelector('.games-container');
       if (!container) return;
-      fetch('/api/games')
-        .then(function(r) { return r.json(); })
+      fetch('/api/games', { cache: 'no-store' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('games api ' + r.status);
+          return r.json();
+        })
         .then(function(games) {
-          if (!games || !games.length) return; // keep static HTML
+          if (!Array.isArray(games)) throw new Error('games payload not array');
+          container.setAttribute('data-games-source', 'api');
           container.innerHTML = '';
           games.forEach(function(g) {
-            var stars = buildStarsListHtml(g.rating);
+            var ratingNum = parseFloat(g.rating);
+            if (isNaN(ratingNum)) ratingNum = 0;
+            var stars = buildStarsListHtml(ratingNum);
             var card = document.createElement('div');
             card.className = 'game-card';
-            card.setAttribute('data-game', g.data_game);
-            card.setAttribute('data-link', g.link);
-            card.setAttribute('data-category', g.category);
-            card.setAttribute('data-rating', String(g.rating));
+            card.setAttribute('data-game', g.data_game || '');
+            card.setAttribute('data-link', g.link || '');
+            card.setAttribute('data-category', g.category || '');
+            card.setAttribute('data-rating', String(ratingNum));
             card.innerHTML =
-              '<img src="' + g.image_url + '" alt="' + g.title + '" class="game-icon" loading="lazy">' +
+              '<img src="' + escapeAttr(g.image_url) + '" alt="' + escapeAttr(g.title) + '" class="game-icon" loading="lazy">' +
               '<div class="game-info">' +
-                '<div class="game-title">' + g.title + '</div>' +
-                '<div class="game-meta"><span>' + g.version + '</span><span class="meta-dot">&middot;</span><span>' + g.release_date + '</span></div>' +
-                '<div class="game-rating">' + stars + '<span class="rating-num">' + g.rating.toFixed(1) + '</span></div>' +
+                '<div class="game-title">' + escapeHtmlText(g.title) + '</div>' +
+                '<div class="game-meta"><span>' + escapeHtmlText(g.version) + '</span><span class="meta-dot">&middot;</span><span>' + escapeHtmlText(g.release_date) + '</span></div>' +
+                '<div class="game-rating">' + stars + '<span class="rating-num">' + ratingNum.toFixed(1) + '</span></div>' +
               '</div>' +
               '<i class="fas fa-chevron-right game-arrow"></i>';
             container.appendChild(card);
           });
-          // Dispatch event so other systems know cards are ready
           document.dispatchEvent(new Event('gameCardsLoaded'));
         })
-        .catch(function() { /* keep static HTML on error */ });
+        .catch(function() {
+          container.setAttribute('data-games-source', 'static');
+          document.dispatchEvent(new Event('gameCardsLoaded'));
+        });
     })();
 
     // ===== GRID/LIST VIEW TOGGLE (saved in localStorage) =====
@@ -969,7 +991,6 @@
       });
 
     } // end initSearchSystem
-    initSearchSystem();
     document.addEventListener('gameCardsLoaded', function() { setTimeout(initSearchSystem, 50); });
     
     // Show/hide help button on scroll

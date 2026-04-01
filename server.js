@@ -930,6 +930,8 @@ app.post('/api/comments/:gameSlug', requireAuth, (req, res) => {
 // ========== PUBLIC GAMES API (for dynamic rendering) ==========
 app.get('/api/games', (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
     const games = getAllGames.all();
     res.json(games);
   } catch (err) {
