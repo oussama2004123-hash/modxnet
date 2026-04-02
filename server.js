@@ -168,6 +168,62 @@ function injectSeoTags({ html, title, description, keywords, canonical }) {
   return out;
 }
 
+/**
+ * Build star-rating HTML for a game card (server-side mirror of client buildStarsListHtml).
+ */
+function buildStarsHtml(rating) {
+  const r = typeof rating === 'number' ? rating : parseFloat(rating) || 0;
+  let s = '';
+  let full = Math.floor(r);
+  const frac = r % 1;
+  const half = frac >= 0.25 && frac < 0.75;
+  if (frac >= 0.75) full++;
+  for (let i = 0; i < full; i++) s += '<i class="fas fa-star"></i>';
+  if (half) s += '<i class="fas fa-star-half-alt"></i>';
+  for (let j = full + (half ? 1 : 0); j < 5; j++) s += '<i class="far fa-star"></i>';
+  return s;
+}
+
+/**
+ * Render the <div class="games-container view-grid">…</div> block from DB rows.
+ * Replaces any existing static cards in the HTML so the page always reflects the database.
+ */
+function injectGameCards(html) {
+  try {
+    const games = getAllGames.all();
+    if (!games || !games.length) return html;
+
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    let cards = '';
+    for (const g of games) {
+      const r = typeof g.rating === 'number' ? g.rating : parseFloat(g.rating) || 0;
+      cards += `
+      <div class="game-card" data-game="${esc(g.data_game)}" data-link="${esc(g.link)}" data-category="${esc(g.category)}" data-rating="${r}">
+        <img src="${esc(g.image_url)}" alt="${esc(g.title)}" class="game-icon" loading="lazy">
+        <div class="game-info">
+          <div class="game-title">${esc(g.title)}</div>
+          <div class="game-meta"><span>${esc(g.version)}</span><span class="meta-dot">&middot;</span><span>${esc(g.release_date)}</span></div>
+          <div class="game-rating">${buildStarsHtml(r)}<span class="rating-num">${r.toFixed(1)}</span></div>
+        </div>
+        <i class="fas fa-chevron-right game-arrow"></i>
+      </div>`;
+    }
+
+    const containerHtml = `<div class="games-container view-grid">${cards}\n    </div>`;
+
+    // Replace the existing static container (greedy match between opening and closing div)
+    const re = /<div\s+class="games-container\s+view-grid"[\s\S]*?<\/div>\s*(?=\s*(?:<!--|\n\s*<(?:a |section|\/section)))/i;
+    if (re.test(html)) {
+      return html.replace(re, containerHtml);
+    }
+    return html;
+  } catch (e) {
+    return html;
+  }
+}
+
 // ========== HEALTH CHECK (must be first, before any middleware) ==========
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime() });
@@ -2378,7 +2434,8 @@ app.get('/', (req, res, next) => {
   try {
     const filePath = path.join(__dirname, 'index.html');
     if (!fs.existsSync(filePath)) return next();
-    const html = fs.readFileSync(filePath, 'utf8');
+    let html = fs.readFileSync(filePath, 'utf8');
+    html = injectGameCards(html);
     const year = new Date().getFullYear();
     const games = getAllGames.all();
     const topNames = (games || []).slice(0, 6).map(g => g.title).filter(Boolean);
@@ -2388,6 +2445,7 @@ app.get('/', (req, res, next) => {
       : `Download the latest mobile games for Android ${year}. Free download on ModXNet.`;
     const keywords = `modded games, mobile games, android games, mod apk, download games, ModXNet`;
     const canonical = getSiteBaseUrl(req) + '/';
+    res.set('Cache-Control', 'no-store');
     res.type('html').send(injectSeoTags({ html, title, description, keywords, canonical }));
   } catch (e) {
     next();
@@ -2398,7 +2456,8 @@ app.get('/category/:category', (req, res, next) => {
   try {
     const filePath = path.join(__dirname, 'index.html');
     if (!fs.existsSync(filePath)) return next();
-    const html = fs.readFileSync(filePath, 'utf8');
+    let html = fs.readFileSync(filePath, 'utf8');
+    html = injectGameCards(html);
     const year = new Date().getFullYear();
     const cat = String(req.params.category || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
     const { db } = require('./database');
@@ -2411,6 +2470,7 @@ app.get('/category/:category', (req, res, next) => {
       : `Download ${prettyCat} games for Android ${year}. Free download on ModXNet.`;
     const keywords = `${cat} games, ${cat} mobile, ${cat} android, ${cat} apk, mod apk, download ${cat} games`;
     const canonical = getSiteBaseUrl(req) + `/category/${cat}`;
+    res.set('Cache-Control', 'no-store');
     res.type('html').send(injectSeoTags({ html, title, description, keywords, canonical }));
   } catch (e) {
     next();
@@ -2476,16 +2536,24 @@ app.get('/:gameSlug/', (req, res, next) => {
 // Order: API routes already defined above → static files → SPA fallback last
 app.use(express.static(path.join(__dirname), {
   extensions: ['html'],
-  index: 'index.html'
+  index: false
 }));
 
 // SPA fallback: index.html for non-API routes only. Never override /api/*.
 // Uses app.use instead of app.get('*') for Express 5 / path-to-regexp compatibility
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(__dirname, 'index.html'), (err) => {
-    if (err) next(err);
-  });
+  try {
+    const filePath = path.join(__dirname, 'index.html');
+    let html = fs.readFileSync(filePath, 'utf8');
+    html = injectGameCards(html);
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(html);
+  } catch (e) {
+    res.sendFile(path.join(__dirname, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  }
 });
 
 // ========== START SERVER ==========
