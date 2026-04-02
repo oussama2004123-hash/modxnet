@@ -832,10 +832,23 @@
         }
       }
 
-      // 3. Save game page images
+      // 4. Save full HTML from editor FIRST. The textarea still has old cover/logo/screenshot
+      //    URLs until the next step — if we saved images before this, this PUT would overwrite
+      //    the file and undo cover/logo/screenshots. Patch images & features after.
+      var htmlContent = $('editorTextarea').value;
+      if (htmlContent && htmlContent.trim()) {
+        try {
+          await api('/api/admin/gamepage/' + encodeURIComponent(slug), {
+            method: 'PUT',
+            body: JSON.stringify({ content: htmlContent })
+          });
+        } catch(e) { /* HTML save failed, non-critical */ }
+      }
+
+      // 5. Patch game page images (cover, logo, screenshots) onto the saved HTML
       var ssFiltered = pageImagesData.screenshots.filter(function(u) { return u && u.trim(); });
       try {
-        await fetch('/api/admin/gamepage/' + encodeURIComponent(slug) + '/images', {
+        var imgRes = await fetch('/api/admin/gamepage/' + encodeURIComponent(slug) + '/images', {
           method: 'PUT',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -845,9 +858,13 @@
             screenshots: ssFiltered
           })
         });
-      } catch(e) { /* page images save failed, non-critical */ }
+        if (!imgRes.ok) {
+          var errTxt = await imgRes.text();
+          console.warn('game page images save:', imgRes.status, errTxt);
+        }
+      } catch(e) { console.warn('game page images save failed', e); }
 
-      // 4. Save features
+      // 6. Save features
       var filteredFeatures = featuresData.filter(function(f) { return f && f.trim(); });
       if (filteredFeatures.length > 0) {
         try {
@@ -860,18 +877,7 @@
         } catch(e) { /* features save failed, non-critical */ }
       }
 
-      // 5. Save HTML first (so subsequent writes to the file aren't overwritten)
-      var htmlContent = $('editorTextarea').value;
-      if (htmlContent && htmlContent.trim()) {
-        try {
-          await api('/api/admin/gamepage/' + encodeURIComponent(slug), {
-            method: 'PUT',
-            body: JSON.stringify({ content: htmlContent })
-          });
-        } catch(e) { /* HTML save failed, non-critical */ }
-      }
-
-      // 6. Save adblue config (content locker it/key) — writes into HTML file
+      // 7. Save adblue config (content locker it/key) — writes into HTML file
       var adblueIt = $('editorAdblueIt').value.trim();
       var adblueKey = $('editorAdblueKey').value.trim();
       if (adblueIt || adblueKey) {
@@ -891,7 +897,7 @@
         } catch(e) { /* adblue save failed, non-critical */ }
       }
 
-      // 7. Save votes (rating + vote count) — writes into HTML + JS files AFTER HTML is saved
+      // 8. Save votes (rating + vote count) — writes into HTML + JS files last
       try {
         await fetch('/api/admin/gamepage/' + encodeURIComponent(slug) + '/votes', {
           method: 'PUT',
@@ -925,7 +931,7 @@
         $('editorTextarea').value = freshPage.content;
       } catch(e) {}
 
-      // 8. Auto-generate fake engagement for NEW games
+      // 9. Auto-generate fake engagement for NEW games
       var isNewGame = !id; // was a new game (no id before save)
       var autoEngage = $('autoEngagementCheck') && $('autoEngagementCheck').checked;
       if (isNewGame && autoEngage) {

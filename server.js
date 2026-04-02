@@ -1652,17 +1652,17 @@ app.get('/api/admin/gamepage/:slug/images', requireAdmin, (req, res) => {
     if (!fs.existsSync(pagePath)) return res.status(404).json({ error: 'Game page not found' });
     const html = fs.readFileSync(pagePath, 'utf8');
 
-    // Extract cover image (inside .hero div)
-    const coverMatch = html.match(/<div\s+class="hero"[^>]*>\s*<img\s+src="([^"]*)"[^>]*>/i);
+    // Extract cover image (first img inside .hero)
+    const coverMatch = html.match(/<div[^>]*\bclass="[^"]*\bhero\b[^"]*"[^>]*>\s*<img\s+src="([^"]*)"[^>]*>/i);
     const cover = coverMatch ? coverMatch[1] : '';
 
-    // Extract logo image (inside .game-title-wrapper with class game-logo)
-    const logoMatch = html.match(/<img\s+src="([^"]*)"[^>]*class="game-logo"[^>]*>/i) ||
-                      html.match(/<img[^>]*class="game-logo"[^>]*src="([^"]*)"[^>]*>/i);
+    // Extract logo (class game-logo)
+    const logoMatch = html.match(/<img\s+src="([^"]*)"[^>]*\bclass="[^"]*\bgame-logo\b[^"]*"[^>]*>/i) ||
+                      html.match(/<img[^>]*\bclass="[^"]*\bgame-logo\b[^"]*"[^>]*src="([^"]*)"[^>]*>/i);
     const logo = logoMatch ? logoMatch[1] : '';
 
     // Extract screenshots (inside .screenshot-grid)
-    const ssSection = html.match(/<div\s+class="screenshot-grid"[^>]*>([\s\S]*?)<\/div>/i);
+    const ssSection = html.match(/<div[^>]*\bclass="[^"]*\bscreenshot-grid\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
     const screenshots = [];
     if (ssSection) {
       const imgRegex = /<img\s+src="([^"]*)"[^>]*>/gi;
@@ -1685,24 +1685,24 @@ app.put('/api/admin/gamepage/:slug/images', requireAdmin, (req, res) => {
     let html = fs.readFileSync(pagePath, 'utf8');
     const { cover, logo, screenshots } = req.body;
 
-    // Update cover image
+    // Update cover image (first <img> inside .hero — allows extra classes / whitespace)
     if (typeof cover === 'string') {
-      html = html.replace(
-        /(<div\s+class="hero"[^>]*>\s*<img\s+src=")([^"]*)("[^>]*>)/i,
-        '$1' + cover.replace(/\$/g, '$$$$') + '$3'
-      );
+      const heroCoverRe = /(<div[^>]*\bclass="[^"]*\bhero\b[^"]*"[^>]*>\s*<img\s+src=")([^"]*)(")/i;
+      if (heroCoverRe.test(html)) {
+        html = html.replace(heroCoverRe, '$1' + cover.replace(/\$/g, '$$$$') + '$3');
+      }
     }
 
     // Update logo image and favicon
     if (typeof logo === 'string') {
-      // Try class before src
+      // Try src before class="game-logo"
       html = html.replace(
-        /(<img\s+src=")([^"]*)("[^>]*class="game-logo"[^>]*>)/i,
+        /(<img\s+src=")([^"]*)("[^>]*\bclass="[^"]*\bgame-logo\b[^"]*"[^>]*>)/i,
         '$1' + logo.replace(/\$/g, '$$$$') + '$3'
       );
-      // Also try src after class
+      // Also try class before src
       html = html.replace(
-        /(<img[^>]*class="game-logo"[^>]*src=")([^"]*)("[^>]*>)/i,
+        /(<img[^>]*\bclass="[^"]*\bgame-logo\b[^"]*"[^>]*src=")([^"]*)("[^>]*>)/i,
         '$1' + logo.replace(/\$/g, '$$$$') + '$3'
       );
       // Update favicon to match game logo
@@ -1714,9 +1714,9 @@ app.put('/api/admin/gamepage/:slug/images', requireAdmin, (req, res) => {
       }
     }
 
-    // Update screenshots
+    // Update screenshots (grid may use id="screenshotGrid" and/or extra classes)
     if (Array.isArray(screenshots)) {
-      const ssSection = html.match(/(<div\s+class="screenshot-grid"[^>]*>)([\s\S]*?)(<\/div>)/i);
+      const ssSection = html.match(/(<div[^>]*\bclass="[^"]*\bscreenshot-grid\b[^"]*"[^>]*>)([\s\S]*?)(<\/div>)/i);
       if (ssSection) {
         const title = html.match(/<h1>([^<]*)<\/h1>/i);
         const gameName = title ? title[1] : 'Game';
