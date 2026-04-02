@@ -61,3 +61,32 @@ Share the full error output. Typical errors:
 - **`PathError` / `Missing parameter name`** → still on old code; pull again.
 - **`Cannot find module 'better-sqlite3'`** → run `npm install` again.
 - **`EADDRINUSE`** → port 3334 is in use; stop other processes or change `PORT` in `.env`.
+
+---
+
+## Google login: `Error 401: disabled_client`
+
+Google shows **“The OAuth client was disabled”** when the **OAuth 2.0 Client ID** in Google Cloud is turned off, deleted, or the project was restricted. **This is not a bug in the Node app** — the server only uses `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `.env`.
+
+### What to do (Google Cloud Console)
+
+1. Open **[Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)** (pick the **same project** that created your Web client).
+2. Under **OAuth 2.0 Client IDs**, open your **Web application** client (not “Desktop” or wrong type).
+3. If the client is listed but disabled, **enable** it or the project; if it was **deleted**, you must **create a new** “OAuth client ID” → type **Web application**.
+4. Under **Authorized redirect URIs**, add **every** URL you use, **exactly** (scheme, host, path — no trailing slash on the path unless you use it):
+   - `http://localhost:3334/api/auth/google/callback`
+   - `https://modxnet.com/api/auth/google/callback`
+   - `https://www.modxnet.com/api/auth/google/callback`
+5. **OAuth consent screen** (same project): publishing status must allow your users (**Testing** + test users, or **In production**). If the app is in testing, add Google accounts that should be able to sign in under **Test users**.
+6. Copy the new **Client ID** and **Client secret** into `/var/www/modxnet/.env` on the VPS:
+   ```bash
+   nano /var/www/modxnet/.env
+   # Set GOOGLE_CLIENT_ID=... and GOOGLE_CLIENT_SECRET=...
+   ```
+   Then: `pm2 restart modxnet --update-env`
+
+If the whole **Google Cloud project** is closed or suspended, create a **new project**, set up the OAuth consent screen again, create a new Web client, update `.env`, and restart PM2.
+
+### Security note
+
+If client credentials were ever shared or committed, **create a new OAuth client** or **reset the client secret** in the console and update `.env` only on the server (never commit `.env`).
