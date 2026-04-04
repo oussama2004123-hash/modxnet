@@ -92,6 +92,64 @@
         '<div class="stat-card"><div class="stat-icon games"><i class="fas fa-gamepad"></i></div><div class="stat-info"><h4>' + s.games + '</h4><p>Games</p></div></div>' +
         '<div class="stat-card"><div class="stat-icon reviews"><i class="fas fa-star"></i></div><div class="stat-info"><h4>' + s.reviews + '</h4><p>Reviews</p></div></div>';
     } catch (e) {}
+    refreshEmailBroadcastUi();
+  }
+
+  function renderEmailBroadcastStatus(targetEl, s) {
+    if (!targetEl) return;
+    if (!s || s.state === 'idle') {
+      targetEl.innerHTML = '<span style="color:var(--text3)">No broadcast has run on this server process yet.</span>';
+      return;
+    }
+    if (s.state === 'running' || s.running) {
+      targetEl.innerHTML =
+        '<strong style="color:var(--primary)">Running</strong> — ' + (s.recipientCount || 0) + ' recipients. Sent: <strong>' + (s.sent || 0) + '</strong>, failed so far: ' + (s.failed || 0) + '.';
+      return;
+    }
+    if (s.state === 'completed') {
+      var tail = '';
+      if (s.failures && s.failures.length) {
+        tail = '<br><span style="font-size:0.78rem;color:#f66">Sample errors: ' + s.failures.slice(0, 3).map(function(f) {
+          return escHtml(String(f.email || '') + ': ' + String(f.error || ''));
+        }).join(' · ') + '</span>';
+      }
+      var when = '';
+      if (s.finishedAt) {
+        try {
+          when = formatDate(s.finishedAt) + ' ' + new Date(s.finishedAt).toLocaleTimeString();
+        } catch (e2) { when = s.finishedAt; }
+      }
+      targetEl.innerHTML =
+        '<strong>Completed</strong>' + (when ? ' — ' + escHtml(when) : '') +
+        '<br>Sent: <strong>' + (s.sent || 0) + '</strong>, failed: <strong>' + (s.failed || 0) + '</strong>.' + tail;
+      return;
+    }
+    if (s.state === 'error') {
+      targetEl.innerHTML = '<strong style="color:#f66">Error</strong> — ' + escHtml(s.error || 'Unknown');
+      return;
+    }
+    targetEl.textContent = JSON.stringify(s);
+  }
+
+  async function refreshEmailBroadcastUi() {
+    try {
+      var r = await fetch('/api/admin/email/broadcast-status', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+      var s = await r.json();
+      if (!r.ok) throw new Error(s.error || 'Status failed');
+      renderEmailBroadcastStatus($('dashboardEmailBroadcastStatus'), s);
+      renderEmailBroadcastStatus($('comebackBroadcastStatusLine'), s);
+    } catch (e) {
+      var msg = '<span style="color:#f66">' + escHtml(e.message || 'Could not load status') + '</span>';
+      var d = $('dashboardEmailBroadcastStatus');
+      var c = $('comebackBroadcastStatusLine');
+      if (d) d.innerHTML = msg;
+      if (c) c.innerHTML = msg;
+    }
+  }
+
+  var refreshBroadcastBtn = $('refreshEmailBroadcastStatusBtn');
+  if (refreshBroadcastBtn) {
+    refreshBroadcastBtn.addEventListener('click', function() { refreshEmailBroadcastUi(); });
   }
 
   // ===== TRASH COUNTS =====
@@ -1199,26 +1257,26 @@
       $('usersCount').textContent = users.length;
 
       // Stats
-      var fakeCount = users.filter(function(u) { return u.email && u.email.endsWith('@modxnet.fake'); }).length;
+      var fakeCount = users.filter(function(u) { return u.email && u.email.toLowerCase().endsWith('@modxnet.fake'); }).length;
       var realCount = users.length - fakeCount;
-      var googleCount = users.filter(function(u) { return u.avatar_url && u.avatar_url.includes('googleusercontent.com'); }).length;
+      var googleLinked = users.filter(function(u) { return u.google_id && String(u.google_id).trim(); }).length;
       $('usersStats').innerHTML =
         '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:0.82rem;color:var(--text2)">' +
-          '<span><i class="fas fa-users" style="color:var(--primary);margin-right:4px"></i> <b>' + realCount + '</b> real users</span>' +
-          '<span><i class="fas fa-robot" style="color:#888;margin-right:4px"></i> <b>' + fakeCount + '</b> system users</span>' +
-          '<span><i class="fab fa-google" style="color:#4285f4;margin-right:4px"></i> <b>' + googleCount + '</b> Google accounts</span>' +
+          '<span><i class="fas fa-users" style="color:var(--primary);margin-right:4px"></i> <b>' + realCount + '</b> accounts (excl. fake)</span>' +
+          '<span><i class="fas fa-robot" style="color:#888;margin-right:4px"></i> <b>' + fakeCount + '</b> @modxnet.fake</span>' +
+          '<span><i class="fab fa-google" style="color:#4285f4;margin-right:4px"></i> <b>' + googleLinked + '</b> Google-linked</span>' +
         '</div>';
 
       var html = '';
       users.forEach(function(u) {
-        var isFake = u.email && u.email.endsWith('@modxnet.fake');
-        var isGoogle = u.avatar_url && u.avatar_url.includes('googleusercontent.com');
+        var isFake = u.email && u.email.toLowerCase().endsWith('@modxnet.fake');
+        var hasGoogle = u.google_id && String(u.google_id).trim();
         var avatar = u.avatar_url
           ? '<img src="' + u.avatar_url + '" class="user-avatar" referrerpolicy="no-referrer" style="width:32px;height:32px;border-radius:50%;object-fit:cover">'
           : '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#00ffcc,#00d4aa);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#0a0a0a">' + (u.username || 'U').charAt(0).toUpperCase() + '</div>';
         var typeBadge = isFake
           ? '<span style="display:inline-block;padding:1px 6px;border-radius:6px;font-size:0.68rem;background:rgba(136,136,136,0.15);color:#888">System</span>'
-          : isGoogle
+          : hasGoogle
             ? '<span style="display:inline-block;padding:1px 6px;border-radius:6px;font-size:0.68rem;background:rgba(66,133,244,0.15);color:#4285f4">Google</span>'
             : '<span style="display:inline-block;padding:1px 6px;border-radius:6px;font-size:0.68rem;background:rgba(0,255,204,0.15);color:#00ffcc">Email</span>';
         html += '<tr>' +
@@ -1280,6 +1338,31 @@
     if (!confirm('Delete user "' + name + '"?\nAll their reviews will also be removed.')) return;
     api('/api/admin/users/' + id, { method: 'DELETE' }).then(function() { toast('User removed'); loadUsers(); });
   };
+
+  var purgeNonGoogleBtn = $('purgeNonGoogleUsersBtn');
+  if (purgeNonGoogleBtn) purgeNonGoogleBtn.addEventListener('click', async function() {
+    if (!confirm('Delete all users except your admin account (ADMIN_EMAIL) who either use @modxnet.fake or have no Google ID linked?\n\nTheir reviews and comments are removed (database CASCADE). This cannot be undone.')) return;
+    var typed = window.prompt('Type exactly: DELETE_NON_GOOGLE_AND_FAKE_USERS');
+    if (typed !== 'DELETE_NON_GOOGLE_AND_FAKE_USERS') {
+      if (typed !== null) toast('Confirmation text did not match — cancelled.', 'error');
+      return;
+    }
+    try {
+      var res = await fetch('/api/admin/users/purge-non-google', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ confirm: 'DELETE_NON_GOOGLE_AND_FAKE_USERS' })
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Purge failed');
+      toast('Removed ' + (data.deleted != null ? data.deleted : 0) + ' user(s).', 'success');
+      loadUsers();
+      loadDashboard();
+    } catch (err) {
+      toast(err.message || 'Purge failed', 'error');
+    }
+  });
 
   // Download users data as CSV
   $('downloadUsersBtn').addEventListener('click', async function() {
@@ -1353,6 +1436,7 @@
     $('comebackSendBtn').innerHTML = '<i class="fas fa-paper-plane"></i> Send emails';
     $('comebackSiteUrlPreview').textContent = '…';
     $('comebackRecipientCount').textContent = '…';
+    refreshEmailBroadcastUi();
     fetch('/api/admin/email/comeback-draft', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -1445,6 +1529,7 @@
         .then(function(d) {
           if (d.background) {
             toast(d.message || ('Queued ' + (d.recipientCount || 0) + ' email(s) in background'), 'success');
+            refreshEmailBroadcastUi();
             closeComebackEmailModal();
             return;
           }

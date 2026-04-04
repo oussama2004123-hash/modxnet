@@ -14,7 +14,7 @@
     <div class="auth-gate-inner">
       <div class="auth-logo"><i class="fas fa-shield-alt"></i></div>
       <h2>Admin Access Required</h2>
-      <p>On the main site, sign in with <strong>modxnet.support@gmail.com</strong> (Google or email/password), then open this page again.</p>
+      <p>On the main site, sign in with <strong>modxnet.support@gmail.com</strong> using Google, then open this page again. (Set <code>ALLOW_LOCAL_AUTH=1</code> on the server only if you need email/password login again.)</p>
       <a href="/?action=login" class="auth-gate-btn"><i class="fas fa-sign-in-alt"></i> Go to Login</a>
     </div>
   </div>
@@ -67,6 +67,12 @@
             <button class="action-btn" onclick="switchTab('trash')"><i class="fas fa-trash-restore"></i> View Trash</button>
             <button class="action-btn action-btn-warn" type="button" id="openComebackEmailBtn"><i class="fas fa-envelope-open-text"></i> Email all users</button>
           </div>
+        </div>
+        <div class="broadcast-status-panel" style="margin-top:24px;padding:18px;border-radius:12px;background:var(--surface);border:1px solid var(--border);max-width:720px">
+          <h3 style="font-size:1rem;margin:0 0 10px;font-weight:600"><i class="fas fa-broadcast-tower" style="color:var(--primary);margin-right:8px"></i>Email broadcast status</h3>
+          <p style="font-size:0.78rem;color:var(--text3);margin:0 0 8px">Updates while a send is running; resets if the server restarts.</p>
+          <div id="dashboardEmailBroadcastStatus" style="font-size:0.88rem;color:var(--text2);line-height:1.55">—</div>
+          <button type="button" class="cancel-btn" id="refreshEmailBroadcastStatusBtn" style="margin-top:12px"><i class="fas fa-sync"></i> Refresh status</button>
         </div>
       </section>
 
@@ -384,7 +390,10 @@
         <div class="tab-header">
           <h2><i class="fas fa-users"></i> Users</h2>
           <span class="count-badge" id="usersCount">0</span>
-          <button class="action-btn" id="downloadUsersBtn" style="margin-left:auto"><i class="fas fa-download"></i> Download Users</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;align-items:center">
+            <button class="action-btn action-btn-warn" type="button" id="purgeNonGoogleUsersBtn" title="Removes @modxnet.fake and accounts without Google (keeps ADMIN_EMAIL)"><i class="fas fa-user-slash"></i> Remove non-Google users</button>
+            <button class="action-btn" type="button" id="downloadUsersBtn"><i class="fas fa-download"></i> Download Users</button>
+          </div>
         </div>
         <div class="users-stats" id="usersStats"></div>
         <table class="data-table">
@@ -440,6 +449,7 @@
               <span><i class="fas fa-link"></i> <code>{{siteUrl}}</code> resolves to: <code id="comebackSiteUrlPreview">—</code></span>
               <span><i class="fas fa-users"></i> Recipients: <strong id="comebackRecipientCount">—</strong></span>
             </div>
+            <div id="comebackBroadcastStatusLine" style="margin:12px 0;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);font-size:0.84rem;color:var(--text2);line-height:1.45"></div>
             <div class="form-group comeback-field">
               <label for="comebackSubject">Subject line</label>
               <input type="text" id="comebackSubject" class="comeback-input-subject" maxlength="500" autocomplete="off">

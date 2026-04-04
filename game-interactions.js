@@ -120,53 +120,62 @@
 
   // ========== LOGIN PROMPT MODAL ==========
   function showLoginPrompt(action) {
-    // Remove existing if any
     var existing = document.getElementById('loginPromptOverlay');
     if (existing) existing.remove();
 
     var actionText = 'leave a review';
 
-    var overlay = document.createElement('div');
-    overlay.className = 'login-prompt-overlay';
-    overlay.id = 'loginPromptOverlay';
-    overlay.innerHTML =
-      '<div class="login-prompt-modal">' +
-        '<div class="lp-icon"><i class="fas fa-user-lock"></i></div>' +
-        '<h3>Join the Conversation</h3>' +
-        '<p>You need to be logged in to <strong>' + actionText + '</strong>.<br>Sign in to share your experience with the community!</p>' +
-        '<div class="lp-actions">' +
-          '<button class="lp-google-btn" id="lpGoogleBtn">' +
-            '<img src="https://i.postimg.cc/tCL4vv7z/google-color-(1).png" alt="Google"> Continue with Google' +
-          '</button>' +
-          '<div class="lp-divider">or</div>' +
+    function mount(googleOnly) {
+      var emailSection = googleOnly
+        ? ''
+        : '<div class="lp-divider">or</div>' +
           '<button class="lp-login-btn" id="lpLoginBtn">' +
             '<i class="fas fa-sign-in-alt"></i> Sign in with Email' +
-          '</button>' +
-          '<button class="lp-close-btn" id="lpCloseBtn">Maybe Later</button>' +
-        '</div>' +
-      '</div>';
+          '</button>';
 
-    document.body.appendChild(overlay);
+      var overlay = document.createElement('div');
+      overlay.className = 'login-prompt-overlay';
+      overlay.id = 'loginPromptOverlay';
+      overlay.innerHTML =
+        '<div class="login-prompt-modal">' +
+          '<div class="lp-icon"><i class="fas fa-user-lock"></i></div>' +
+          '<h3>Join the Conversation</h3>' +
+          '<p>You need to be logged in to <strong>' + actionText + '</strong>.<br>Sign in to share your experience with the community!</p>' +
+          '<div class="lp-actions">' +
+            '<button class="lp-google-btn" id="lpGoogleBtn">' +
+              '<img src="https://i.postimg.cc/tCL4vv7z/google-color-(1).png" alt="Google"> Continue with Google' +
+            '</button>' +
+            emailSection +
+            '<button class="lp-close-btn" id="lpCloseBtn">Maybe Later</button>' +
+          '</div>' +
+        '</div>';
 
-    // Google sign in
-    overlay.querySelector('#lpGoogleBtn').addEventListener('click', function() {
-      window.location.href = '/api/auth/google';
-    });
+      document.body.appendChild(overlay);
 
-    // Email login — go to homepage with login modal trigger
-    overlay.querySelector('#lpLoginBtn').addEventListener('click', function() {
-      window.location.href = '/?action=login';
-    });
+      overlay.querySelector('#lpGoogleBtn').addEventListener('click', function() {
+        window.location.href = '/api/auth/google';
+      });
 
-    // Close
-    overlay.querySelector('#lpCloseBtn').addEventListener('click', function() {
-      overlay.remove();
-    });
+      var lpEmail = overlay.querySelector('#lpLoginBtn');
+      if (lpEmail) {
+        lpEmail.addEventListener('click', function() {
+          window.location.href = '/?action=login';
+        });
+      }
 
-    // Close on backdrop click
-    overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) overlay.remove();
-    });
+      overlay.querySelector('#lpCloseBtn').addEventListener('click', function() {
+        overlay.remove();
+      });
+
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+      });
+    }
+
+    fetch('/api/auth/config', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(cfg) { mount(!!cfg.googleOnly); })
+      .catch(function() { mount(true); });
   }
 
   // ========== UTILITY ==========

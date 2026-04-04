@@ -382,7 +382,7 @@ const setConfig = db.prepare(`INSERT INTO site_config (key, value) VALUES (@key,
 const getAllConfig = db.prepare('SELECT * FROM site_config ORDER BY key ASC');
 
 // ========== ADMIN: USER HELPERS ==========
-const getAllUsers = db.prepare('SELECT id, username, email, avatar_url, created_at FROM users ORDER BY created_at DESC');
+const getAllUsers = db.prepare('SELECT id, username, email, avatar_url, google_id, created_at FROM users ORDER BY created_at DESC');
 const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
 const getAllReviews = db.prepare(`SELECT r.*, u.username, u.email FROM reviews r JOIN users u ON r.user_id = u.id ORDER BY r.created_at DESC`);
 const getAllComments = db.prepare(`SELECT c.*, u.username, u.email FROM comments c JOIN users u ON c.user_id = u.id ORDER BY c.created_at DESC`);

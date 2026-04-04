@@ -131,6 +131,21 @@
     const gameCards = document.querySelectorAll('.game-card');
     const downloadGameBtn = document.getElementById('downloadGameBtn');
 
+    function isGoogleOnlyAuth() {
+      return document.documentElement.getAttribute('data-auth-google-only') === '1';
+    }
+    (function initAuthGoogleOnlyFlag() {
+      document.documentElement.setAttribute('data-auth-google-only', '1');
+      fetch('/api/auth/config', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(cfg) {
+          if (!cfg.googleOnly) {
+            document.documentElement.removeAttribute('data-auth-google-only');
+          }
+        })
+        .catch(function() {});
+    })();
+
     /** List row: fractional stars; grid view CSS/JS uses five solid stars. */
     function buildStarsListHtml(rating) {
       var r = typeof rating === 'number' ? rating : parseFloat(rating, 10);
@@ -439,11 +454,27 @@
       })
       .catch(function() {});
 
-    // Auto-open login modal if redirected from game page with ?action=login
-    if (window.location.search.indexOf('action=login') !== -1 && loginModal) {
-      setTimeout(function() { loginModal.classList.add('active'); }, 500);
-      // Clean URL
-      history.replaceState(null, '', window.location.pathname);
+    // ?action=login from game pages: Google OAuth when site is Google-only, else open email modal
+    if (window.location.search.indexOf('action=login') !== -1) {
+      (function() {
+        function cleanQuery() {
+          try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+        }
+        fetch('/api/auth/config', { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(cfg) {
+            cleanQuery();
+            if (cfg.googleOnly) {
+              window.location.href = '/api/auth/google';
+            } else if (loginModal) {
+              setTimeout(function() { loginModal.classList.add('active'); }, 400);
+            }
+          })
+          .catch(function() {
+            cleanQuery();
+            window.location.href = '/api/auth/google';
+          });
+      })();
     }
 
     // Google Login Button - opens login modal (when not logged in)
@@ -454,8 +485,10 @@
       googleLoginBtn.onclick = function() {
         if (currentUser) {
           showLogoutModal();
-        } else {
-          if (loginModal) loginModal.classList.add('active');
+        } else if (isGoogleOnlyAuth()) {
+          window.location.href = '/api/auth/google';
+        } else if (loginModal) {
+          loginModal.classList.add('active');
         }
       };
     }
@@ -1024,11 +1057,19 @@
     
     // Auth Modals
     function showLoginModal() {
+      if (isGoogleOnlyAuth()) {
+        window.location.href = '/api/auth/google';
+        return;
+      }
       loginModal.classList.add('active');
       if (mobileMenu) mobileMenu.classList.remove('active');
     }
     
     function showRegisterModal() {
+      if (isGoogleOnlyAuth()) {
+        window.location.href = '/api/auth/google';
+        return;
+      }
       registerModal.classList.add('active');
       if (mobileMenu) mobileMenu.classList.remove('active');
     }

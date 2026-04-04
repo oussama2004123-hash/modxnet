@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const {
+  db,
   findUserById, findUserByEmail, findUserByGoogleId, createUser, updateUserAvatar, updateUserProfile, updateUserByAdmin, markWelcomeEmailSent, linkGoogleIdForUser, getHelpFaqs,
   getReviewsByGame, createReview, userReviewExists,
   getCommentsByGame, createComment,
@@ -344,6 +345,15 @@ function requireAuth(req, res, next) {
 }
 
 // ========== AUTH ROUTES ==========
+/** Set ALLOW_LOCAL_AUTH=1 in .env to re-enable email/password register & login (e.g. local dev). */
+const GOOGLE_ONLY_AUTH = process.env.ALLOW_LOCAL_AUTH !== '1';
+
+app.get('/api/auth/config', (req, res) => {
+  res.json({
+    googleOnly: GOOGLE_ONLY_AUTH,
+    googleOAuthEnabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  });
+});
 
 // Google OAuth
 app.get('/api/auth/google', (req, res, next) => {
@@ -372,6 +382,12 @@ app.get('/api/auth/google/callback',
 // Email/Password Registration
 app.post('/api/auth/register', async (req, res) => {
   try {
+    if (GOOGLE_ONLY_AUTH) {
+      return res.status(403).json({
+        error: 'Registration with email and password is disabled. Please use Sign in with Google.',
+        googleOnly: true
+      });
+    }
     const { username, email, password, avatar_url } = req.body;
 
     if (!username || !email || !password) {
@@ -422,6 +438,12 @@ app.post('/api/auth/register', async (req, res) => {
 // Email/Password Login
 app.post('/api/auth/login', async (req, res) => {
   try {
+    if (GOOGLE_ONLY_AUTH) {
+      return res.status(403).json({
+        error: 'Email/password sign-in is disabled. Please use Sign in with Google.',
+        googleOnly: true
+      });
+    }
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -2291,6 +2313,34 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/**
+ * Remove @modxnet.fake engagement users and any non-Google account (no google_id).
+ * Never deletes the admin row (ADMIN_EMAIL). Body: { "confirm": "DELETE_NON_GOOGLE_AND_FAKE_USERS" }
+ */
+app.post('/api/admin/users/purge-non-google', requireAdmin, (req, res) => {
+  if (!req.body || req.body.confirm !== 'DELETE_NON_GOOGLE_AND_FAKE_USERS') {
+    return res.status(400).json({
+      error: 'Send JSON { "confirm": "DELETE_NON_GOOGLE_AND_FAKE_USERS" } to proceed.'
+    });
+  }
+  try {
+    const adminNorm = ADMIN_EMAIL;
+    const stmt = db.prepare(`
+      DELETE FROM users
+      WHERE LOWER(TRIM(email)) != ?
+      AND (
+        LOWER(TRIM(email)) LIKE '%@modxnet.fake'
+        OR google_id IS NULL
+        OR TRIM(COALESCE(google_id, '')) = ''
+      )
+    `);
+    const info = stmt.run(adminNorm);
+    res.json({ success: true, deleted: info.changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const COMEBACK_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Real inboxes only — generated review users use @modxnet.fake and must not receive blasts. */
@@ -2371,6 +2421,17 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
 
   comebackBlastInProgress = true;
   const tpl = { subjectTpl, htmlTpl, textTplRaw, siteBase };
+  const startedIso = new Date().toISOString();
+  emailBroadcastStatus = {
+    state: 'running',
+    startedAt: startedIso,
+    finishedAt: null,
+    recipientCount: recipients.length,
+    sent: 0,
+    failed: 0,
+    failures: [],
+    error: null
+  };
 
   void (async () => {
     let sent = 0;
@@ -2394,13 +2455,39 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
             html: htmlFinal
           });
           sent++;
+          emailBroadcastStatus.sent = sent;
+          emailBroadcastStatus.failed = failures.length;
           await new Promise((r) => setTimeout(r, 450));
         } catch (err) {
           failures.push({ email, error: err.message || String(err) });
+          emailBroadcastStatus.failed = failures.length;
+          emailBroadcastStatus.failures = failures.slice(0, 25);
           console.error('[comeback-blast] fail', email, err.code || '', err.message);
         }
       }
       console.log('[comeback-blast] finished sent=' + sent + ' failed=' + failures.length);
+      emailBroadcastStatus = {
+        state: 'completed',
+        startedAt: emailBroadcastStatus.startedAt,
+        finishedAt: new Date().toISOString(),
+        recipientCount: recipients.length,
+        sent,
+        failed: failures.length,
+        failures: failures.slice(0, 25),
+        error: null
+      };
+    } catch (err) {
+      emailBroadcastStatus = {
+        state: 'error',
+        startedAt: startedIso,
+        finishedAt: new Date().toISOString(),
+        recipientCount: recipients.length,
+        sent,
+        failed: failures.length,
+        failures: failures.slice(0, 25),
+        error: err.message || String(err)
+      };
+      console.error('[comeback-blast] fatal', err);
     } finally {
       comebackBlastInProgress = false;
     }

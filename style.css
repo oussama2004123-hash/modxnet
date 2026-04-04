@@ -1560,6 +1560,18 @@
       transform: translateY(-1px);
     }
 
+    /* Set on <html> when /api/auth/config returns googleOnly (production default). ALLOW_LOCAL_AUTH=1 removes it. */
+    html[data-auth-google-only="1"] .auth-local-only {
+      display: none !important;
+    }
+
+    html[data-auth-google-only="1"] #loginBtn,
+    html[data-auth-google-only="1"] #registerBtn,
+    html[data-auth-google-only="1"] #mobileLoginBtn,
+    html[data-auth-google-only="1"] #mobileRegisterBtn {
+      display: none !important;
+    }
+
     .google-icon {
       width: 20px;
       height: 20px;
