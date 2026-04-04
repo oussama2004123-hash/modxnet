@@ -1420,27 +1420,53 @@
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
       var payload = { confirm: true, subject: sub, html: html };
       if (text.length) payload.text = text;
+      function resetComebackSendBtn() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send emails';
+      }
       fetch('/api/admin/email/comeback-blast', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload)
       })
         .then(function(r) {
-          return r.json().then(function(d) { return { ok: r.ok, d: d }; });
+          return r.text().then(function(text) {
+            var d;
+            try {
+              d = text ? JSON.parse(text) : {};
+            } catch (e) {
+              throw new Error((text && text.slice(0, 200)) || 'Invalid server response');
+            }
+            if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            return d;
+          });
         })
-        .then(function(res) {
-          if (!res.ok) throw new Error(res.d.error || 'Request failed');
-          var msg = 'Sent ' + res.d.sent + ' email(s)';
-          if (res.d.failed) msg += ' — ' + res.d.failed + ' failed';
-          toast(msg, res.d.failed ? 'error' : 'success');
+        .then(function(d) {
+          if (d.background) {
+            toast(d.message || ('Queued ' + (d.recipientCount || 0) + ' email(s) in background'), 'success');
+            closeComebackEmailModal();
+            return;
+          }
+          if (d.recipientCount === 0 && d.message) {
+            toast(d.message, 'error');
+            closeComebackEmailModal();
+            return;
+          }
+          var msg = 'Sent ' + (d.sent != null ? d.sent : 0) + ' email(s)';
+          if (d.failed) msg += ' — ' + d.failed + ' failed';
+          toast(msg, d.failed ? 'error' : 'success');
+          if (d.failures && d.failures.length) {
+            console.warn('Broadcast failures:', d.failures);
+          }
           closeComebackEmailModal();
         })
         .catch(function(err) {
           toast(err.message || 'Send failed', 'error');
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send emails';
           if (comebackCheck) comebackCheck.checked = false;
+        })
+        .finally(function() {
+          resetComebackSendBtn();
         });
     });
   }

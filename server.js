@@ -2293,10 +2293,20 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
 
 const COMEBACK_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Real inboxes only — generated review users use @modxnet.fake and must not receive blasts. */
+function isComebackBlastRecipient(email) {
+  const e = String(email || '').trim();
+  if (!COMEBACK_EMAIL_RE.test(e)) return false;
+  if (e.toLowerCase().endsWith('@modxnet.fake')) return false;
+  return true;
+}
+
+let comebackBlastInProgress = false;
+
 app.get('/api/admin/email/comeback-draft', requireAdmin, (req, res) => {
   try {
     const users = getAllUsers.all();
-    const n = users.filter((u) => COMEBACK_EMAIL_RE.test(String(u.email || '').trim())).length;
+    const n = users.filter((u) => isComebackBlastRecipient(u.email)).length;
     const defaults = getComebackEmailDefaults();
     res.json({
       siteUrl: getPublicBaseUrl(),
@@ -2314,11 +2324,11 @@ app.get('/api/admin/email/comeback-draft', requireAdmin, (req, res) => {
 });
 
 /**
- * Send email blast to all users with valid addresses.
+ * Send email blast to all users with real addresses (skips @modxnet.fake).
  * Body: { "confirm": true, "subject": "...", "html": "...", "text": "..." (optional) }
- * Templates may include {{username}} and {{siteUrl}} (base URL, no trailing slash).
+ * Sends in the background so nginx/proxy timeouts do not abort a long run.
  */
-app.post('/api/admin/email/comeback-blast', requireAdmin, async (req, res) => {
+app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
   if (!req.body || req.body.confirm !== true) {
     return res.status(400).json({ error: 'Set JSON body { "confirm": true } to send.' });
   }
@@ -2341,36 +2351,69 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-  let sent = 0;
-  const failures = [];
-  for (const u of users) {
-    const email = String(u.email || '').trim();
-    if (!COMEBACK_EMAIL_RE.test(email)) continue;
-    try {
-      const htmlFinal = applyComebackHtmlTemplate(htmlTpl, u.username, siteBase);
-      const textFinal = textTplRaw.length
-        ? applyComebackTextTemplate(textTplRaw, u.username, siteBase)
-        : crudeHtmlToText(htmlFinal);
-      const subjectFinal = applyComebackSubjectTemplate(subjectTpl, u.username);
-      await transporter.sendMail({
-        from: `"ModXNet" <${SMTP_USER}>`,
-        to: email,
-        replyTo: CONTACT_INBOX,
-        subject: subjectFinal,
-        text: textFinal,
-        html: htmlFinal
-      });
-      sent++;
-      await new Promise((r) => setTimeout(r, 550));
-    } catch (err) {
-      failures.push({ email, error: err.message || String(err) });
-    }
+
+  const recipients = users.filter((u) => isComebackBlastRecipient(u.email));
+  if (recipients.length === 0) {
+    return res.json({
+      success: true,
+      sent: 0,
+      failed: 0,
+      recipientCount: 0,
+      message: 'No recipients. Only real addresses count (@modxnet.fake test accounts are excluded). Add users with Gmail or other real emails, or sign in with Google.'
+    });
   }
+
+  if (comebackBlastInProgress) {
+    return res.status(429).json({
+      error: 'A broadcast is already running. Wait a minute and check server logs (pm2 logs modxnet) for [comeback-blast].'
+    });
+  }
+
+  comebackBlastInProgress = true;
+  const tpl = { subjectTpl, htmlTpl, textTplRaw, siteBase };
+
+  void (async () => {
+    let sent = 0;
+    const failures = [];
+    try {
+      console.log('[comeback-blast] starting, recipients:', recipients.length);
+      for (const u of recipients) {
+        const email = String(u.email || '').trim();
+        try {
+          const htmlFinal = applyComebackHtmlTemplate(tpl.htmlTpl, u.username, tpl.siteBase);
+          const textFinal = tpl.textTplRaw.length
+            ? applyComebackTextTemplate(tpl.textTplRaw, u.username, tpl.siteBase)
+            : crudeHtmlToText(htmlFinal);
+          const subjectFinal = applyComebackSubjectTemplate(tpl.subjectTpl, u.username);
+          await transporter.sendMail({
+            from: `"ModXNet" <${SMTP_USER}>`,
+            to: email,
+            replyTo: CONTACT_INBOX,
+            subject: subjectFinal,
+            text: textFinal,
+            html: htmlFinal
+          });
+          sent++;
+          await new Promise((r) => setTimeout(r, 450));
+        } catch (err) {
+          failures.push({ email, error: err.message || String(err) });
+          console.error('[comeback-blast] fail', email, err.code || '', err.message);
+        }
+      }
+      console.log('[comeback-blast] finished sent=' + sent + ' failed=' + failures.length);
+    } finally {
+      comebackBlastInProgress = false;
+    }
+  })();
+
   res.json({
     success: true,
-    sent,
-    failed: failures.length,
-    failures: failures.slice(0, 25)
+    background: true,
+    recipientCount: recipients.length,
+    message:
+      'Queued ' +
+      recipients.length +
+      ' email(s). They send in the background (~0.5s each). Test accounts @modxnet.fake are skipped. Watch VPS: pm2 logs modxnet — look for [comeback-blast].'
   });
 });
 
