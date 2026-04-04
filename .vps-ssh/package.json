@@ -1,0 +1,1 @@
+{"name":"vps-ssh-runner","private":true,"type":"commonjs","dependencies":{"ssh2":"^1.16.0"}}

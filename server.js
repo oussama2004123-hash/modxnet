@@ -2778,7 +2778,9 @@ app.use((req, res, next) => {
 });
 
 // ========== START SERVER ==========
-app.listen(PORT, '0.0.0.0', () => {
+/** Set BIND_HOST=127.0.0.1 behind Nginx so the app port is not exposed publicly. */
+const bindHost = process.env.BIND_HOST || '0.0.0.0';
+app.listen(PORT, bindHost, () => {
   const siteUrl = process.env.SITE_URL || process.env.GOOGLE_CALLBACK_URL;
   let domain = process.env.RAILWAY_PUBLIC_DOMAIN || (siteUrl ? siteUrl.replace(/^https?:\/\//, '').split('/')[0] : null) || 'localhost:' + PORT;
   const protocol = (domain && domain !== 'localhost:' + PORT) ? 'https' : 'http';

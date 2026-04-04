@@ -18,3 +18,4 @@ Thumbs.db
 deploy-remote.sh
 deploy.ps1
 fix-pm2.sh
+.vps-ssh/node_modules/
