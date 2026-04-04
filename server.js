@@ -609,6 +609,29 @@ transporter.verify()
   .then(() => console.log('SMTP connection verified (port 587) - contact form ready'))
   .catch(err => console.error('SMTP connection FAILED:', err.code, err.message));
 
+/**
+ * Separate pool for admin “email all users” — longer timeouts, reconnects every maxMessages
+ * (Gmail often drops very long single connections). Not used if SMTP is unconfigured.
+ */
+function createBroadcastMailTransport() {
+  const pass = process.env.SMTP_APP_PASSWORD;
+  if (!pass || !String(pass).trim()) return null;
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    family: 4,
+    auth: { user: SMTP_USER, pass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 60000,
+    greetingTimeout: 45000,
+    socketTimeout: 120000,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 40
+  });
+}
+
 /** One-time welcome email after sign-in (not shown on site). Set WELCOME_EMAIL_ALWAYS=1 to send on every login (testing; does not update DB flag). */
 async function sendWelcomeEmailIfNeeded(userId) {
   const alwaysSend = process.env.WELCOME_EMAIL_ALWAYS === '1';
@@ -2353,6 +2376,26 @@ function isComebackBlastRecipient(email) {
 
 let comebackBlastInProgress = false;
 
+/** Last broadcast job state (in-memory; lost on restart). */
+let emailBroadcastStatus = {
+  state: 'idle',
+  startedAt: null,
+  finishedAt: null,
+  recipientCount: 0,
+  sent: 0,
+  failed: 0,
+  failures: [],
+  error: null
+};
+
+app.get('/api/admin/email/broadcast-status', requireAdmin, (req, res) => {
+  res.json({
+    running: comebackBlastInProgress,
+    ...emailBroadcastStatus,
+    failures: Array.isArray(emailBroadcastStatus.failures) ? emailBroadcastStatus.failures : []
+  });
+});
+
 app.get('/api/admin/email/comeback-draft', requireAdmin, (req, res) => {
   try {
     const users = getAllUsers.all();
@@ -2433,12 +2476,31 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
     error: null
   };
 
+  const delayMs = Math.max(200, Math.min(60000, parseInt(process.env.EMAIL_BROADCAST_DELAY_MS || '450', 10) || 450));
+  const mailer = createBroadcastMailTransport() || transporter;
+  const ownsMailer = mailer !== transporter;
+
   void (async () => {
     let sent = 0;
     const failures = [];
+    const total = recipients.length;
     try {
-      console.log('[comeback-blast] starting, recipients:', recipients.length);
+      console.log(
+        '[comeback-blast] pid=%s starting recipients=%s delayMs=%s transport=%s',
+        process.pid,
+        total,
+        delayMs,
+        ownsMailer ? 'broadcast-pool' : 'shared-smtp'
+      );
+      if (total > 500) {
+        console.warn(
+          '[comeback-blast] WARNING: Personal Gmail is limited to roughly 500 recipients/day. ' +
+            'Expect most sends to fail after that. Use Google Workspace or a provider (SES, SendGrid, Mailgun) for bulk.'
+        );
+      }
+      let idx = 0;
       for (const u of recipients) {
+        idx++;
         const email = String(u.email || '').trim();
         try {
           const htmlFinal = applyComebackHtmlTemplate(tpl.htmlTpl, u.username, tpl.siteBase);
@@ -2446,7 +2508,7 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
             ? applyComebackTextTemplate(tpl.textTplRaw, u.username, tpl.siteBase)
             : crudeHtmlToText(htmlFinal);
           const subjectFinal = applyComebackSubjectTemplate(tpl.subjectTpl, u.username);
-          await transporter.sendMail({
+          await mailer.sendMail({
             from: `"ModXNet" <${SMTP_USER}>`,
             to: email,
             replyTo: CONTACT_INBOX,
@@ -2457,12 +2519,20 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
           sent++;
           emailBroadcastStatus.sent = sent;
           emailBroadcastStatus.failed = failures.length;
-          await new Promise((r) => setTimeout(r, 450));
+          if (idx % 100 === 0 || idx === total) {
+            console.log('[comeback-blast] progress', idx + '/' + total, 'sent=' + sent, 'failed=' + failures.length);
+          }
+          await new Promise((r) => setTimeout(r, delayMs));
         } catch (err) {
           failures.push({ email, error: err.message || String(err) });
           emailBroadcastStatus.failed = failures.length;
           emailBroadcastStatus.failures = failures.slice(0, 25);
-          console.error('[comeback-blast] fail', email, err.code || '', err.message);
+          const code = err.code || err.responseCode || '';
+          console.error('[comeback-blast] fail', email, code, err.message);
+          if (failures.length === 1) {
+            console.error('[comeback-blast] first-failure detail', err.stack || err);
+          }
+          await new Promise((r) => setTimeout(r, delayMs));
         }
       }
       console.log('[comeback-blast] finished sent=' + sent + ' failed=' + failures.length);
@@ -2490,8 +2560,26 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
       console.error('[comeback-blast] fatal', err);
     } finally {
       comebackBlastInProgress = false;
+      try {
+        if (ownsMailer && typeof mailer.close === 'function') {
+          await mailer.close();
+        }
+      } catch (e) { /* ignore */ }
     }
-  })();
+  })().catch((err) => {
+    console.error('[comeback-blast] unhandled (promise)', err);
+    comebackBlastInProgress = false;
+    emailBroadcastStatus = {
+      state: 'error',
+      startedAt: emailBroadcastStatus.startedAt || startedIso,
+      finishedAt: new Date().toISOString(),
+      recipientCount: recipients.length,
+      sent: emailBroadcastStatus.sent || 0,
+      failed: emailBroadcastStatus.failed || 0,
+      failures: emailBroadcastStatus.failures || [],
+      error: err.message || String(err)
+    };
+  });
 
   res.json({
     success: true,
@@ -2500,7 +2588,10 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
     message:
       'Queued ' +
       recipients.length +
-      ' email(s). They send in the background (~0.5s each). Test accounts @modxnet.fake are skipped. Watch VPS: pm2 logs modxnet — look for [comeback-blast].'
+      ' email(s). They send in the background (~' +
+      Math.round(delayMs / 100) / 10 +
+      's between each). Check Admin → Home “Email broadcast status”, or: pm2 logs modxnet — lines tagged [comeback-blast]. ' +
+      'Personal Gmail allows only ~500 recipients/day — for ~22k users use Workspace or SES/SendGrid.'
   });
 });
 
