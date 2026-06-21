@@ -104,9 +104,10 @@ if (gameCount.cnt === 0) {
     { slug: 'GTA-5-Mobile', title: 'GTA V Mobile', image_url: 'https://i.pinimg.com/736x/8f/01/03/8f010359c57da7850e723fa17a53b55e.jpg', data_game: 'gta5', category: 'openworld action', version: 'v1.1', release_date: 'Jan 2025', rating: 4.0, link: '/GTA-5-Mobile/', sort_order: 2 },
     { slug: 'Assetto-Corsa-Mobile', title: 'Assetto Corsa Mobile', image_url: 'https://i.postimg.cc/mgStnz0K/Picsart-25-10-16-14-24-02-706.jpg', data_game: 'assetto', category: 'racing simulation', version: 'v2.0', release_date: 'Mar 2025', rating: 5.0, link: '/Assetto-Corsa-Mobile/', sort_order: 3 },
     { slug: 'Forza-Horizon-5', title: 'Forza Horizon 5 Mobile', image_url: 'https://images.seeklogo.com/logo-png/40/1/forza-horizon-5-logo-png_seeklogo-406612.png', data_game: 'forza', category: 'racing openworld', version: 'v1.0', release_date: 'Dec 2024', rating: 4.0, link: '/Forza-Horizon-5/', sort_order: 4 },
-    { slug: 'ETS-2-Mobile', title: 'Euro Truck Simulator 2', image_url: 'https://i.pinimg.com/564x/32/ae/e5/32aee5919f1c4e81da58627d21b3323a.jpg', data_game: 'eurotruck', category: 'simulation', version: 'v1.0.0', release_date: 'Nov 2024', rating: 4.0, link: '/ETS-2-Mobile/', sort_order: 5 },
-    { slug: 'Watchdogs2-Mobile', title: 'Watch Dogs 2 Mobile', image_url: 'https://images.steamusercontent.com/ugc/180542583658076938/524D520DFF7C6671219DF93F38B195D435B93786/?imw=637&imh=358&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true', data_game: 'watchdogs', category: 'openworld action', version: 'v1.0.5', release_date: 'Oct 2024', rating: 3.5, link: '/Watchdogs2-Mobile/', sort_order: 6 },
-    { slug: 'The-Crew-Motorfest-Mobile', title: 'The Crew MotorFest', image_url: 'https://i.postimg.cc/8Pq2KNXW/TCM-KA-low-Rez.jpg', data_game: 'motorfest', category: 'racing openworld', version: 'v1.0.0', release_date: 'Jan 2025', rating: 4.5, link: '/The-Crew-Motorfest-Mobile/', sort_order: 7 }
+    { slug: 'Forza-Horizon-6-Mobile', title: 'Forza Horizon 6 Mobile', image_url: '/Forza-Horizon-6-Mobile/forza-logo.jpeg', data_game: 'forza6', category: 'racing openworld', version: 'v1.0.0', release_date: 'Jun 2026', rating: 4.5, link: '/Forza-Horizon-6-Mobile/', sort_order: 5 },
+    { slug: 'ETS-2-Mobile', title: 'Euro Truck Simulator 2', image_url: 'https://i.pinimg.com/564x/32/ae/e5/32aee5919f1c4e81da58627d21b3323a.jpg', data_game: 'eurotruck', category: 'simulation', version: 'v1.0.0', release_date: 'Nov 2024', rating: 4.0, link: '/ETS-2-Mobile/', sort_order: 6 },
+    { slug: 'Watchdogs2-Mobile', title: 'Watch Dogs 2 Mobile', image_url: 'https://images.steamusercontent.com/ugc/180542583658076938/524D520DFF7C6671219DF93F38B195D435B93786/?imw=637&imh=358&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true', data_game: 'watchdogs', category: 'openworld action', version: 'v1.0.5', release_date: 'Oct 2024', rating: 3.5, link: '/Watchdogs2-Mobile/', sort_order: 7 },
+    { slug: 'The-Crew-Motorfest-Mobile', title: 'The Crew MotorFest', image_url: 'https://i.postimg.cc/8Pq2KNXW/TCM-KA-low-Rez.jpg', data_game: 'motorfest', category: 'racing openworld', version: 'v1.0.0', release_date: 'Jan 2025', rating: 4.5, link: '/The-Crew-Motorfest-Mobile/', sort_order: 8 }
   ];
   const insertMany = db.transaction((games) => { for (const g of games) insertGame.run(g); });
   insertMany(defaultGames);
@@ -121,6 +122,7 @@ if (adblueCount.cnt === 0) {
     { game_slug: 'GTA-5-Mobile', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4455572, key_value: 'e7e4f', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' },
     { game_slug: 'Assetto-Corsa-Mobile', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4455972, key_value: '5c9ff', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' },
     { game_slug: 'Forza-Horizon-5', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4455992, key_value: '146ef', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' },
+    { game_slug: 'Forza-Horizon-6-Mobile', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4455992, key_value: '146ef', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' },
     { game_slug: 'ETS-2-Mobile', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4513374, key_value: 'f32e1', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' },
     { game_slug: 'Watchdogs2-Mobile', variable_name: 'LSggc_lIq_uBTErc', it_value: 4513158, key_value: '28405', script_url: 'https://da4talg8ap14y.cloudfront.net/e6fbc02.js' },
     { game_slug: 'The-Crew-Motorfest-Mobile', variable_name: 'PKiWi_Ojz_wYrvyc', it_value: 4476533, key_value: '8af25', script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js' }
@@ -185,6 +187,42 @@ try { db.exec(`ALTER TABLE games ADD COLUMN deleted_at DATETIME DEFAULT NULL`); 
 try { db.exec(`ALTER TABLE games ADD COLUMN seo_title TEXT NOT NULL DEFAULT ''`); } catch(e) {}
 try { db.exec(`ALTER TABLE games ADD COLUMN seo_description TEXT NOT NULL DEFAULT ''`); } catch(e) {}
 try { db.exec(`ALTER TABLE games ADD COLUMN seo_keywords TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+
+// Ensure the Forza Horizon 6 game exists on existing deployments.
+try {
+  const forza6Exists = db.prepare('SELECT COUNT(*) as cnt FROM games WHERE slug = ?').get('Forza-Horizon-6-Mobile');
+  if (!forza6Exists.cnt) {
+    const addForza6 = db.transaction(() => {
+      db.prepare('UPDATE games SET sort_order = sort_order + 1 WHERE sort_order >= 5').run();
+      db.prepare(`INSERT INTO games (slug, title, image_url, data_game, category, version, release_date, rating, link, sort_order, visible, seo_title, seo_description, seo_keywords)
+        VALUES (@slug, @title, @image_url, @data_game, @category, @version, @release_date, @rating, @link, @sort_order, @visible, @seo_title, @seo_description, @seo_keywords)`).run({
+          slug: 'Forza-Horizon-6-Mobile',
+          title: 'Forza Horizon 6 Mobile',
+          image_url: '/Forza-Horizon-6-Mobile/forza-logo.jpeg',
+          data_game: 'forza6',
+          category: 'racing openworld',
+          version: 'v1.0.0',
+          release_date: 'Jun 2026',
+          rating: 4.5,
+          link: '/Forza-Horizon-6-Mobile/',
+          sort_order: 5,
+          visible: 1,
+          seo_title: 'Download Forza Horizon 6 Mobile for Android 2026 - ModXNet',
+          seo_description: 'Download Forza Horizon 6 Mobile v1.0.0 MOD APK for Android and iOS. Open-world racing with premium cars and mobile-optimized graphics on ModXNet.',
+          seo_keywords: 'Forza Horizon 6 Mobile, Forza Horizon 6 Android, Forza Horizon 6 APK, Forza Horizon 6 MOD, download Forza Horizon 6 Mobile'
+        });
+      db.prepare(`INSERT OR IGNORE INTO adblue_config (game_slug, variable_name, it_value, key_value, script_url)
+        VALUES (@game_slug, @variable_name, @it_value, @key_value, @script_url)`).run({
+          game_slug: 'Forza-Horizon-6-Mobile',
+          variable_name: 'PKiWi_Ojz_wYrvyc',
+          it_value: 4455992,
+          key_value: '146ef',
+          script_url: 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js'
+        });
+    });
+    addForza6();
+  }
+} catch(e) {}
 
 // Add sentiment columns to existing tables if they don't have them yet
 try { db.exec(`ALTER TABLE reviews ADD COLUMN sentiment TEXT DEFAULT 'positive'`); } catch(e) {}
