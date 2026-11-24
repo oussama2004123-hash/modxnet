@@ -2320,7 +2320,11 @@ function getPostbackUrl(settings) {
 }
 
 function getVisitorIp(req) {
-  let ip = String(req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
+  // modxnet.com sits behind Cloudflare -> Nginx, so req.ip is a Cloudflare edge server.
+  // Cloudflare puts the real visitor address in CF-Connecting-IP; the offer feed needs it to
+  // match offers to the visitor's country.
+  const cf = String(req.get('cf-connecting-ip') || '').trim();
+  let ip = /^[0-9a-fA-F:.]{3,45}$/.test(cf) ? cf : String(req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
   if (ip.startsWith('::ffff:')) ip = ip.slice(7);
   return ip;
 }
@@ -2410,12 +2414,28 @@ function rankOffers(list) {
     .map(x => x.o);
 }
 
+// The feed sometimes sends HTML entities (e.g. "aplicaci&oacute;n"); the popup shows plain text
+const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', iexcl: '¡', iquest: '¿', laquo: '«', raquo: '»', euro: '€', szlig: 'ß', hellip: '…', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“' };
+const ACCENTS = { acute: '́', grave: '̀', circ: '̂', tilde: '̃', uml: '̈', ring: '̊', cedil: '̧' };
+function decodeEntities(s) {
+  return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
+    }
+    if (Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, e)) return NAMED_ENTITIES[e];
+    const acc = e.match(/^([a-zA-Z])(acute|grave|circ|tilde|uml|ring|cedil)$/);
+    if (acc) return (acc[1] + ACCENTS[acc[2]]).normalize('NFC');
+    return m;
+  });
+}
+
 function publicOffer(o) {
   return {
     id: String(o.id || ''),
-    name: String(o.name || ''),
-    anchor: String(o.anchor || o.name || 'Complete this offer'),
-    conversion: String(o.conversion || ''),
+    name: decodeEntities(o.name),
+    anchor: decodeEntities(o.anchor || o.name || 'Complete this offer'),
+    conversion: decodeEntities(o.conversion),
     icon: safeHttpUrl(o.network_icon),
     url: safeHttpUrl(o.url),
     impression_url: safeHttpUrl(o.impression_url)
