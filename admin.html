@@ -14,7 +14,7 @@
     <div class="auth-gate-inner">
       <div class="auth-logo"><i class="fas fa-shield-alt"></i></div>
       <h2>Admin Access Required</h2>
-      <p>On the main site, sign in with <strong>modxnet.support@gmail.com</strong> using Google, then open this page again. (Set <code>ALLOW_LOCAL_AUTH=1</code> on the server only if you need email/password login again.)</p>
+      <p>On the main site, sign in with <strong>modxnetgames@gmail.com</strong> using Google, then open this page again. (Set <code>ALLOW_LOCAL_AUTH=1</code> on the server only if you need email/password login again.)</p>
       <a href="/?action=login" class="auth-gate-btn"><i class="fas fa-sign-in-alt"></i> Go to Login</a>
     </div>
   </div>
@@ -267,33 +267,21 @@
             <button type="button" class="img-add-ss-btn" id="addFeatureBtn" style="margin-top:10px"><i class="fas fa-plus"></i> Add Feature</button>
           </div>
 
-          <!-- Section 4: Ad Config (Content Locker) -->
+          <!-- Section 4: Download links (unlocked after an AdBlueMedia offer) -->
           <div class="editor-section">
             <div class="editor-section-header">
-              <h4><i class="fas fa-ad"></i> Content Locker (AdBlueMedia)</h4>
-              <small class="editor-section-hint">Set the "it" and "key" values for this game's download buttons</small>
+              <h4><i class="fas fa-download"></i> Download Links (AdBlueMedia Offers)</h4>
+              <small class="editor-section-hint">Shown to visitors only after they complete an offer</small>
             </div>
             <div class="adblue-inline-editor" id="adblueInlineEditor">
               <div class="form-row">
                 <div class="form-group">
-                  <label>IT (Offer ID) <span class="required">*</span></label>
-                  <input type="number" id="editorAdblueIt" placeholder="e.g. 4455572">
+                  <label><i class="fab fa-android"></i> Android download URL</label>
+                  <input type="text" id="editorAdblueAndroid" placeholder="https://... or /files/game.apk">
                 </div>
                 <div class="form-group">
-                  <label>Key <span class="required">*</span></label>
-                  <input type="text" id="editorAdblueKey" placeholder="e.g. e7e4f">
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Variable Name</label>
-                  <input type="text" id="editorAdblueVar" placeholder="PKiWi_Ojz_wYrvyc" value="PKiWi_Ojz_wYrvyc">
-                  <small class="form-hint">The JS variable name used by AdBlueMedia (usually don't change)</small>
-                </div>
-                <div class="form-group">
-                  <label>Script URL</label>
-                  <input type="text" id="editorAdblueScript" placeholder="https://da4talg8ap14y.cloudfront.net/..." value="https://da4talg8ap14y.cloudfront.net/5b1c47d.js">
-                  <small class="form-hint">The AdBlueMedia JS file URL</small>
+                  <label><i class="fab fa-apple"></i> iOS download URL</label>
+                  <input type="text" id="editorAdblueIos" placeholder="https://... or /files/game.ipa">
                 </div>
               </div>
               <div id="adblueInlineStatus" style="margin-top:6px;font-size:0.8rem;color:var(--text2)"></div>
@@ -379,9 +367,68 @@
       <!-- Tab: Ad Config -->
       <section class="tab-content" id="tab-adblue">
         <div class="tab-header">
-          <h2><i class="fas fa-ad"></i> Ad Config (AdBlueMedia)</h2>
-          <p class="tab-desc">Change the "it" and "key" values for each game's content locker.</p>
+          <h2><i class="fas fa-ad"></i> Ad Config (AdBlueMedia Offers API)</h2>
+          <p class="tab-desc">Visitors pick an offer from the AdBlueMedia feed; when AdBlueMedia's postback confirms it, the game's download link is revealed.</p>
         </div>
+        <div class="adblue-card" id="offerSettingsCard" style="margin-bottom:18px">
+          <div class="adblue-card-header">
+            <h4><i class="fas fa-cog" style="color:var(--primary);margin-right:8px"></i>Offer feed settings</h4>
+            <span id="offerStats" style="font-size:0.78rem;color:var(--text2)"></span>
+          </div>
+          <form id="offerSettingsForm" class="modal-form" style="padding:0">
+            <div class="form-row">
+              <div class="form-group">
+                <label>User ID</label>
+                <input type="text" id="offerUserId" placeholder="426113">
+              </div>
+              <div class="form-group">
+                <label>Offers API key</label>
+                <input type="text" id="offerApiKey" placeholder="API key labelled &quot;Offers&quot;" autocomplete="off">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Feed URL</label>
+                <input type="text" id="offerFeedUrl" placeholder="https://dtvpp42hfuyb2.cloudfront.net/public/offers/feed.php">
+              </div>
+              <div class="form-group">
+                <label>Offers shown (1-10)</label>
+                <input type="number" id="offerCount" min="1" max="10" placeholder="3">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Postback URL <small style="color:var(--text3)">(paste into AdBlueMedia &gt; Postback settings)</small></label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="offerPostbackUrl" readonly style="flex:1;font-size:0.78rem">
+                <button type="button" class="edit-btn" id="offerCopyPostback"><i class="fas fa-copy"></i> Copy</button>
+              </div>
+              <small class="form-hint">Keep this URL private: it contains the secret that marks offers as completed. Check that AdBlueMedia's macro names match {s1}, {payout}, etc.</small>
+            </div>
+            <div class="form-actions" style="justify-content:flex-start;flex-wrap:wrap">
+              <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save settings</button>
+              <button type="button" class="cancel-btn" id="offerTestFeed"><i class="fas fa-vial"></i> Test feed</button>
+              <button type="button" class="cancel-btn" id="offerNewSecret"><i class="fas fa-sync"></i> New postback secret</button>
+            </div>
+            <div id="offerTestResult" style="margin-top:8px;font-size:0.8rem;color:var(--text2)"></div>
+          </form>
+        </div>
+        <div class="adblue-card" id="popupTextsCard" style="margin-bottom:18px">
+          <div class="adblue-card-header">
+            <h4><i class="fas fa-font" style="color:var(--primary);margin-right:8px"></i>Popup text (all games)</h4>
+          </div>
+          <p class="form-hint" style="margin:-6px 0 12px">Every text in the download popup. Leave a box empty to use the default shown in grey.
+            Placeholders: <code>{game}</code> game name, <code>{platform}</code> Android/iOS, <code>{other}</code> the other platform.
+            In the two note boxes, <code>*word*</code> shows in yellow and <code>_word_</code> in green. Type <code>-</code> in a box to hide that part.
+            Each game can override any of these from its <b>Edit</b> button below.</p>
+          <form id="popupTextsForm" class="modal-form" style="padding:0">
+            <div id="popupTextsFields"></div>
+            <div class="form-actions" style="justify-content:flex-start;flex-wrap:wrap">
+              <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save popup text</button>
+              <button type="button" class="cancel-btn" id="popupTextsReset"><i class="fas fa-undo"></i> Reset all to defaults</button>
+            </div>
+          </form>
+        </div>
+        <h3 style="margin:0 0 10px;font-size:1rem"><i class="fas fa-download" style="color:var(--primary);margin-right:6px"></i>Download links per game</h3>
         <div class="adblue-cards" id="adblueCards"></div>
       </section>
 
@@ -495,7 +542,7 @@
   <div class="modal-overlay" id="adblueModal">
     <div class="modal">
       <div class="modal-header">
-        <h3 id="adblueModalTitle">Edit Ad Config</h3>
+        <h3 id="adblueModalTitle">Edit Download Links</h3>
         <button class="modal-close" onclick="closeAdblueModal()"><i class="fas fa-times"></i></button>
       </div>
       <form id="adblueForm" class="modal-form">
@@ -505,24 +552,21 @@
           <input type="text" id="adblueSlugDisplay" disabled>
         </div>
         <div class="form-group">
-          <label>Variable Name</label>
-          <input type="text" id="adblueVarName" placeholder="PKiWi_Ojz_wYrvyc">
-          <small class="form-hint">The JavaScript variable name used by AdBlueMedia.</small>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>IT (Offer ID)</label>
-            <input type="number" id="adblueItValue" placeholder="4455572">
-          </div>
-          <div class="form-group">
-            <label>Key</label>
-            <input type="text" id="adblueKeyValue" placeholder="e7e4f">
-          </div>
+          <label><i class="fab fa-android"></i> Android download URL</label>
+          <input type="text" id="adblueAndroidUrl" placeholder="https://... or /files/game.apk">
         </div>
         <div class="form-group">
-          <label>Script URL</label>
-          <input type="text" id="adblueScriptUrl" placeholder="https://da4talg8ap14y.cloudfront.net/...">
+          <label><i class="fab fa-apple"></i> iOS download URL</label>
+          <input type="text" id="adblueIosUrl" placeholder="https://... or /files/game.ipa">
+          <small class="form-hint">Revealed only after the visitor completes an offer. Leave empty if a platform has no download.</small>
         </div>
+        <details class="html-editor-toggle" id="adbluePopupDetails" style="margin-top:6px">
+          <summary><i class="fas fa-font"></i> Custom popup text for this game (optional)</summary>
+          <p class="form-hint" style="margin:10px 0">Empty boxes use the text from "Popup text (all games)", shown in grey.
+            Same placeholders: <code>{game}</code> <code>{platform}</code> <code>{other}</code>, <code>*yellow*</code> <code>_green_</code>.</p>
+          <div id="adbluePopupFields"></div>
+          <a id="adbluePreviewLink" href="#" target="_blank" rel="noopener" class="form-hint" style="display:inline-block;margin-top:4px"><i class="fas fa-external-link-alt"></i> Open this game's page to preview</a>
+        </details>
         <div class="form-actions">
           <button type="button" class="cancel-btn" onclick="closeAdblueModal()">Cancel</button>
           <button type="submit" class="save-btn"><i class="fas fa-save"></i> Save</button>

@@ -304,21 +304,11 @@
         if (adRes.ok) {
           var allAdblue = await adRes.json();
           var adConfig = allAdblue.find(function(a) { return a.game_slug === slug; });
-          if (adConfig) {
-            $('editorAdblueIt').value = adConfig.it_value || '';
-            $('editorAdblueKey').value = adConfig.key_value || '';
-            $('editorAdblueVar').value = adConfig.variable_name || 'PKiWi_Ojz_wYrvyc';
-            $('editorAdblueScript').value = adConfig.script_url || 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js';
-            $('adblueInlineStatus').innerHTML = adConfig.it_value && adConfig.key_value
-              ? '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Content locker is configured'
-              : '<i class="fas fa-exclamation-triangle" style="color:#ffa500"></i> Not configured yet — set IT and Key values';
-          } else {
-            $('editorAdblueIt').value = '';
-            $('editorAdblueKey').value = '';
-            $('editorAdblueVar').value = 'PKiWi_Ojz_wYrvyc';
-            $('editorAdblueScript').value = 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js';
-            $('adblueInlineStatus').innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ffa500"></i> Not configured yet — set IT and Key values';
-          }
+          $('editorAdblueAndroid').value = (adConfig && adConfig.android_url) || '';
+          $('editorAdblueIos').value = (adConfig && adConfig.ios_url) || '';
+          $('adblueInlineStatus').innerHTML = adConfig && (adConfig.android_url || adConfig.ios_url)
+            ? '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Download link set'
+            : '<i class="fas fa-exclamation-triangle" style="color:#ffa500"></i> No download link yet: visitors who complete an offer will be told to contact support';
         }
       } catch(e) {}
 
@@ -391,12 +381,10 @@
       $('editorFiles').innerHTML = '<span class="editor-file-tag" style="color:var(--text3)"><i class="fas fa-info-circle"></i> Game page will be created automatically on save.</span>';
       $('htmlEditorSection').style.display = '';
       featuresData = [];
-      // Reset adblue fields for new game
-      $('editorAdblueIt').value = '';
-      $('editorAdblueKey').value = '';
-      $('editorAdblueVar').value = 'PKiWi_Ojz_wYrvyc';
-      $('editorAdblueScript').value = 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js';
-      $('adblueInlineStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> Set IT and Key after saving the game';
+      // Reset download link fields for new game
+      $('editorAdblueAndroid').value = '';
+      $('editorAdblueIos').value = '';
+      $('adblueInlineStatus').innerHTML = '<i class="fas fa-info-circle" style="color:var(--text3)"></i> Add the download links the visitor gets after completing an offer';
       // Reset votes with random values
       var randRating = (Math.floor(Math.random() * 10) + 36) / 10; // 3.6 - 4.5
       var randVotes = Math.floor(Math.random() * 15000) + 3000; // 3000 - 18000
@@ -935,25 +923,26 @@
         } catch(e) { /* features save failed, non-critical */ }
       }
 
-      // 7. Save adblue config (content locker it/key) — writes into HTML file
-      var adblueIt = $('editorAdblueIt').value.trim();
-      var adblueKey = $('editorAdblueKey').value.trim();
-      if (adblueIt || adblueKey) {
-        try {
-          await fetch('/api/admin/adblue/' + encodeURIComponent(slug), {
-            method: 'PUT',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({
-              variable_name: $('editorAdblueVar').value.trim() || 'PKiWi_Ojz_wYrvyc',
-              it_value: parseInt(adblueIt) || 0,
-              key_value: adblueKey,
-              script_url: $('editorAdblueScript').value.trim() || 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js'
-            })
-          });
-          $('adblueInlineStatus').innerHTML = '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Content locker is configured';
-        } catch(e) { /* adblue save failed, non-critical */ }
-      }
+      // 7. Save download links (revealed after an AdBlueMedia offer is completed)
+      try {
+        var dlRes = await fetch('/api/admin/adblue/' + encodeURIComponent(slug), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            android_url: $('editorAdblueAndroid').value.trim(),
+            ios_url: $('editorAdblueIos').value.trim()
+          })
+        });
+        var dlData = await dlRes.json().catch(function() { return {}; });
+        if (!dlRes.ok) {
+          $('adblueInlineStatus').innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ff6b6b"></i> ' + escHtml(dlData.error || 'Download links not saved');
+        } else {
+          $('adblueInlineStatus').innerHTML = ($('editorAdblueAndroid').value.trim() || $('editorAdblueIos').value.trim())
+            ? '<i class="fas fa-check-circle" style="color:#00ffcc"></i> Download link set'
+            : '<i class="fas fa-exclamation-triangle" style="color:#ffa500"></i> No download link yet';
+        }
+      } catch(e) { /* download link save failed, non-critical */ }
 
       // 8. Save votes (rating + vote count) — writes into HTML + JS files last
       try {
@@ -1180,7 +1169,202 @@
   // ===========================================================================
   var adblueData = [];
 
+  // ----- Popup text editor (global + per game) -----
+  var POPUP_FIELDS = [
+    { group: 'Header' },
+    { key: 'brand_name', label: 'Brand name (top)' },
+    { key: 'brand_logo', label: 'Brand logo (top)', image: true, hint: 'Upload an image or paste a URL. Type - to hide the logo.' },
+    { key: 'badge_text', label: 'Badge (top right)' },
+    { key: 'title', label: 'Title in banner' },
+    { key: 'subtitle', label: 'Line under the title' },
+    { key: 'banner_image', label: 'Banner image', image: true, hint: 'Empty = the game page cover' },
+    { key: 'game_logo', label: 'Game logo', image: true, hint: 'Empty = the game page logo' },
+    { group: 'Before the offers' },
+    { key: 'note', label: 'Note box', area: true },
+    { key: 'download_button', label: 'Download button' },
+    { key: 'loading_button', label: 'Button while loading' },
+    { group: 'Offers' },
+    { key: 'step1', label: 'Step 1' },
+    { key: 'step2', label: 'Step 2', area: true },
+    { key: 'step3', label: 'Step 3' },
+    { key: 'loading_offers', label: 'Loading offers' },
+    { key: 'verify_text', label: 'Checking row under the offers' },
+    { key: 'after_click', label: 'Message after tapping an offer', area: true },
+    { key: 'no_offers', label: 'When no offers are available', area: true },
+    { key: 'retry_button', label: 'Retry button' },
+    { group: 'After the offer is completed' },
+    { key: 'done_note', label: 'Note box when completed', area: true },
+    { key: 'download_starting', label: 'Download starting message', area: true },
+    { key: 'starting_button', label: 'Button while starting download' },
+    { key: 'link_missing', label: 'When the game has no download link', area: true },
+    { key: 'not_available', label: 'When the chosen platform has no link', area: true },
+    { key: 'other_platform', label: 'Link to the other platform' }
+  ];
+  var popupDefaults = {};
+  var popupGlobal = {};
+
+  function renderPopupFields(containerId, prefix, values, placeholders) {
+    var html = '';
+    POPUP_FIELDS.forEach(function(f) {
+      if (f.group) { html += '<h5 style="margin:16px 0 8px;font-size:0.82rem;color:var(--primary);text-transform:uppercase;letter-spacing:.04em">' + escHtml(f.group) + '</h5>'; return; }
+      var val = escAttr(values[f.key] || '');
+      var ph = escAttr(placeholders[f.key] || '');
+      var input;
+      if (f.area) {
+        input = '<textarea id="' + prefix + f.key + '" rows="2" placeholder="' + ph + '">' + escHtml(values[f.key] || '') + '</textarea>';
+      } else if (f.image) {
+        // URL box + preview + upload button (uses the existing /api/admin/upload)
+        input = '<div style="display:flex;gap:8px;align-items:center">' +
+          '<img id="' + prefix + f.key + '_preview" alt="" style="width:40px;height:40px;flex:none;border-radius:8px;object-fit:cover;background:var(--bg);border:1px solid var(--border2)">' +
+          '<input type="text" id="' + prefix + f.key + '" value="' + val + '" placeholder="' + ph + '" style="flex:1" data-popup-image="1">' +
+          '<button type="button" class="edit-btn" data-popup-upload="' + prefix + f.key + '"><i class="fas fa-upload"></i> Upload</button>' +
+          '<input type="file" accept="image/*" id="' + prefix + f.key + '_file" style="display:none">' +
+        '</div>';
+      } else {
+        input = '<input type="text" id="' + prefix + f.key + '" value="' + val + '" placeholder="' + ph + '">';
+      }
+      html += '<div class="form-group"><label>' + escHtml(f.label) + '</label>' + input +
+        (f.hint ? '<small class="form-hint">' + escHtml(f.hint) + '</small>' : '') + '</div>';
+    });
+    $(containerId).innerHTML = html;
+    wirePopupImageFields(containerId);
+  }
+
+  /** Preview + upload for the image boxes in the popup text editor */
+  function wirePopupImageFields(containerId) {
+    var box = $(containerId);
+    function refresh(inp) {
+      var img = $(inp.id + '_preview');
+      var src = (inp.value.trim() || inp.placeholder || '').trim();
+      if (src && src !== '-') { img.src = src; img.style.visibility = 'visible'; }
+      else { img.removeAttribute('src'); img.style.visibility = 'hidden'; }
+    }
+    box.querySelectorAll('input[data-popup-image]').forEach(function(inp) {
+      refresh(inp);
+      inp.addEventListener('input', function() { refresh(inp); });
+    });
+    box.querySelectorAll('button[data-popup-upload]').forEach(function(btn) {
+      var id = btn.getAttribute('data-popup-upload');
+      var fileInput = $(id + '_file');
+      btn.addEventListener('click', function() { fileInput.click(); });
+      fileInput.addEventListener('change', async function() {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        var fd = new FormData();
+        fd.append('image', file);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading';
+        try {
+          var r = await fetch('/api/admin/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
+          var d = await r.json();
+          if (!r.ok || !d.url) throw new Error(d.error || 'Upload failed');
+          $(id).value = d.url;
+          refresh($(id));
+          toast('Image uploaded. Click Save to use it.');
+        } catch (e) {
+          toast(e.message || 'Upload failed', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+          fileInput.value = '';
+        }
+      });
+    });
+  }
+
+  function collectPopupFields(prefix) {
+    var out = {};
+    POPUP_FIELDS.forEach(function(f) {
+      if (!f.key) return;
+      var v = ($(prefix + f.key).value || '').trim();
+      if (v) out[f.key] = v;
+    });
+    return out;
+  }
+
+  $('popupTextsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    try {
+      var s = await api('/api/admin/adblue/settings', { method: 'PUT', body: JSON.stringify({ popup_texts: collectPopupFields('pt_') }) });
+      popupGlobal = s.popup_texts || {};
+      renderPopupFields('popupTextsFields', 'pt_', popupGlobal, popupDefaults);
+      toast('Popup text saved! It is live on every game page.');
+    } catch (e) {}
+  });
+
+  $('popupTextsReset').addEventListener('click', async function() {
+    if (!confirm('Reset all popup text to the defaults? Per-game custom text is kept.')) return;
+    try {
+      var s = await api('/api/admin/adblue/settings', { method: 'PUT', body: JSON.stringify({ popup_texts: {} }) });
+      popupGlobal = s.popup_texts || {};
+      renderPopupFields('popupTextsFields', 'pt_', popupGlobal, popupDefaults);
+      toast('Popup text reset to defaults');
+    } catch (e) {}
+  });
+
+  function parseJsonSafe(s) { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } }
+
+  async function loadOfferSettings() {
+    try {
+      var s = await api('/api/admin/adblue/settings');
+      $('offerUserId').value = s.user_id || '';
+      $('offerApiKey').value = s.api_key || '';
+      $('offerFeedUrl').value = s.feed_url || '';
+      $('offerCount').value = s.offer_count || 3;
+      $('offerPostbackUrl').value = s.postback_url || '';
+      popupDefaults = s.popup_defaults || {};
+      popupGlobal = s.popup_texts || {};
+      renderPopupFields('popupTextsFields', 'pt_', popupGlobal, popupDefaults);
+      var st = s.stats || {};
+      $('offerStats').textContent = 'Last 30 days: ' + (st.sessions || 0) + ' visitors opened offers, ' +
+        (st.completed || 0) + ' completed, $' + Number(st.payout || 0).toFixed(2) + ' reported by postbacks';
+    } catch (e) {}
+  }
+
+  $('offerSettingsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    try {
+      var s = await api('/api/admin/adblue/settings', { method: 'PUT', body: JSON.stringify({
+        user_id: $('offerUserId').value.trim(),
+        api_key: $('offerApiKey').value.trim(),
+        feed_url: $('offerFeedUrl').value.trim(),
+        offer_count: parseInt($('offerCount').value) || 3
+      }) });
+      $('offerPostbackUrl').value = s.postback_url || '';
+      toast('Offer settings saved!');
+    } catch (e) {}
+  });
+
+  $('offerTestFeed').addEventListener('click', async function() {
+    $('offerTestResult').textContent = 'Fetching offers for your IP and browser...';
+    try {
+      var r = await fetch('/api/admin/adblue/test-feed', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+      var d = await r.json();
+      if (!d.success) { $('offerTestResult').innerHTML = '<span style="color:#ff6b6b">Feed error: ' + escHtml(d.error || 'unknown') + '</span>'; return; }
+      $('offerTestResult').innerHTML = '<span style="color:#00ffcc">' + d.count + ' offers returned.</span> ' +
+        d.offers.slice(0, 5).map(function(o) { return escHtml(o.name) + ' ($' + escHtml(String(o.payout || '?')) + ')'; }).join(' &middot; ');
+    } catch (e) { $('offerTestResult').textContent = 'Request failed'; }
+  });
+
+  $('offerNewSecret').addEventListener('click', async function() {
+    if (!confirm('Create a new postback secret? The old postback URL stops working, so you must paste the new one into AdBlueMedia.')) return;
+    try {
+      var s = await api('/api/admin/adblue/settings', { method: 'PUT', body: JSON.stringify({ regenerate_secret: true }) });
+      $('offerPostbackUrl').value = s.postback_url || '';
+      toast('New postback secret created. Update it in AdBlueMedia.');
+    } catch (e) {}
+  });
+
+  $('offerCopyPostback').addEventListener('click', function() {
+    var v = $('offerPostbackUrl').value;
+    if (!v) return;
+    (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function() { toast('Postback URL copied'); }, function() {
+      $('offerPostbackUrl').select(); document.execCommand('copy'); toast('Postback URL copied');
+    });
+  });
+
   async function loadAdblue() {
+    loadOfferSettings();
     try {
       // Sync first: ensures every game in the database gets an adblue_config entry
       var syncResult = await api('/api/admin/adblue/sync', { method: 'POST' });
@@ -1198,7 +1382,8 @@
   function renderAdblue() {
     var html = '';
     adblueData.forEach(function(a) {
-      var isConfigured = a.it_value && a.key_value;
+      var isConfigured = a.android_url || a.ios_url;
+      var customCount = Object.keys(parseJsonSafe(a.popup_texts)).length;
       var statusBadge = isConfigured
         ? '<span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:0.7rem;font-weight:600;background:rgba(0,255,204,0.15);color:#00ffcc;margin-left:8px">ACTIVE</span>'
         : '<span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:0.7rem;font-weight:600;background:rgba(255,165,0,0.15);color:#ffa500;margin-left:8px">NOT SET</span>';
@@ -1207,10 +1392,9 @@
           '<h4><i class="fas fa-gamepad" style="color:var(--primary);margin-right:8px"></i>' + escHtml(a.game_slug) + statusBadge + '</h4>' +
           '<button class="edit-btn" onclick="editAdblue(\'' + escAttr(a.game_slug) + '\')"><i class="fas fa-edit"></i> ' + (isConfigured ? 'Edit' : 'Set Up') + '</button>' +
         '</div>' +
-        '<div class="adblue-field"><label>Variable</label><div class="val">' + escHtml(a.variable_name) + '</div></div>' +
-        '<div class="adblue-field"><label>IT (Offer ID)</label><div class="val">' + (a.it_value || '<span style="color:#666">—</span>') + '</div></div>' +
-        '<div class="adblue-field"><label>Key</label><div class="val">' + (a.key_value ? escHtml(a.key_value) : '<span style="color:#666">—</span>') + '</div></div>' +
-        '<div class="adblue-field"><label>Script URL</label><div class="val" style="font-size:0.75rem">' + escHtml(a.script_url) + '</div></div>' +
+        '<div class="adblue-field"><label><i class="fab fa-android"></i> Android</label><div class="val" style="font-size:0.75rem;word-break:break-all">' + (a.android_url ? escHtml(a.android_url) : '<span style="color:#666">—</span>') + '</div></div>' +
+        (customCount ? '<div class="adblue-field"><label><i class="fas fa-font"></i> Popup text</label><div class="val" style="font-size:0.75rem">' + customCount + ' custom text' + (customCount > 1 ? 's' : '') + ' for this game</div></div>' : '') +
+        '<div class="adblue-field"><label><i class="fab fa-apple"></i> iOS</label><div class="val" style="font-size:0.75rem;word-break:break-all">' + (a.ios_url ? escHtml(a.ios_url) : '<span style="color:#666">—</span>') + '</div></div>' +
       '</div>';
     });
     $('adblueCards').innerHTML = html || '<p style="color:var(--text2)">No games found. Add games first.</p>';
@@ -1219,13 +1403,15 @@
   window.editAdblue = function(slug) {
     var item = adblueData.find(function(a) { return a.game_slug === slug; });
     if (!item) return;
-    $('adblueModalTitle').textContent = 'Edit Ad Config: ' + slug;
+    $('adblueModalTitle').textContent = 'Download Links: ' + slug;
     $('adblueGameSlug').value = slug;
     $('adblueSlugDisplay').value = slug;
-    $('adblueVarName').value = item.variable_name;
-    $('adblueItValue').value = item.it_value;
-    $('adblueKeyValue').value = item.key_value;
-    $('adblueScriptUrl').value = item.script_url;
+    $('adblueAndroidUrl').value = item.android_url || '';
+    $('adblueIosUrl').value = item.ios_url || '';
+    var gameTexts = parseJsonSafe(item.popup_texts);
+    renderPopupFields('adbluePopupFields', 'ptg_', gameTexts, Object.assign({}, popupDefaults, popupGlobal));
+    $('adbluePopupDetails').open = Object.keys(gameTexts).length > 0;
+    $('adbluePreviewLink').href = '/' + encodeURIComponent(slug) + '/';
     $('adblueModal').classList.add('active');
   };
   window.closeAdblueModal = function() { $('adblueModal').classList.remove('active'); };
@@ -1234,17 +1420,16 @@
     e.preventDefault();
     var slug = $('adblueGameSlug').value;
     var payload = {
-      variable_name: $('adblueVarName').value.trim(),
-      it_value: parseInt($('adblueItValue').value),
-      key_value: $('adblueKeyValue').value.trim(),
-      script_url: $('adblueScriptUrl').value.trim()
+      android_url: $('adblueAndroidUrl').value.trim(),
+      ios_url: $('adblueIosUrl').value.trim(),
+      popup_texts: collectPopupFields('ptg_')
     };
     try {
       var data = await api('/api/admin/adblue/' + encodeURIComponent(slug), { method: 'PUT', body: JSON.stringify(payload) });
       adblueData = data.configs;
       renderAdblue();
       closeAdblueModal();
-      toast('Ad config saved!');
+      toast('Game popup settings saved!');
     } catch (e) {}
   });
 

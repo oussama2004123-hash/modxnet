@@ -6,6 +6,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const path = require('path');
+const crypto = require('crypto');
 const {
   db,
   findUserById, findUserByEmail, findUserByGoogleId, createUser, updateUserAvatar, updateUserProfile, updateUserByAdmin, markWelcomeEmailSent, linkGoogleIdForUser, getHelpFaqs,
@@ -13,7 +14,8 @@ const {
   getCommentsByGame, createComment,
   analyzeSentiment, cleanupExpired,
   getAllGames, getAllGamesAdmin, getTrashedGames, getGameBySlug, getGameById, insertGame, updateGame, softDeleteGame, restoreGame, permanentDeleteGame,
-  getAllAdblue, getAdblueBySlug, upsertAdblue, deleteAdblue,
+  getAllAdblue, getAdblueBySlug, upsertAdblue, deleteAdblue, setAdblueLinks, setAdbluePopupTexts,
+  createOfferSession, getOfferSession, completeOfferSession, purgeOldOfferSessions, getOfferStats,
   getConfig, setConfig, getAllConfig,
   getAllUsers, deleteUser, getAllReviews, getAllComments, deleteReview, deleteComment,
   findUserByUsername, getReviewCountByGame, getCommentCountByGame,
@@ -27,7 +29,7 @@ const PORT = process.env.PORT || 3334;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 
 /** Gmail for SMTP + contact inbox (override with SMTP_EMAIL / CONTACT_RECEIVE_EMAIL in .env or host vars) */
-const DEFAULT_SUPPORT_EMAIL = 'modxnet.support@gmail.com';
+const DEFAULT_SUPPORT_EMAIL = 'modxnetgames@gmail.com';
 const SMTP_USER = String(process.env.SMTP_EMAIL || DEFAULT_SUPPORT_EMAIL).trim();
 const CONTACT_INBOX = String(process.env.CONTACT_RECEIVE_EMAIL || SMTP_USER).trim();
 
@@ -49,6 +51,17 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+/** Wrap HTML fragment so clients declare UTF-8 (reduces mojibake from emojis / special punctuation). */
+function emailHtmlDocument(innerBodyHtml) {
+  return (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+    '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' +
+    '</head><body style="margin:0;padding:0;">' +
+    String(innerBodyHtml || '') +
+    '</body></html>'
+  );
+}
+
 /** Site URL for outbound email links when no request (uses SITE_URL or modxnet.com). */
 function getPublicBaseUrl() {
   const env = (process.env.SITE_URL || '').trim().replace(/\/+$/, '');
@@ -60,36 +73,35 @@ function getPublicBaseUrl() {
 function getComebackEmailDefaults() {
   const html =
     '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;line-height:1.55;font-size:16px;">' +
-    '<p style="margin:0 0 18px;font-size:17px;">Hey {{username}},</p>' +
-    '<p style="margin:0 0 14px;">We noticed you haven\'t visited <strong>ModXNet</strong> in a while — and we get it, life gets busy.</p>' +
-    '<p style="margin:0 0 16px;font-weight:600;">But here\'s what you\'ve been missing:</p>' +
+    '<p style="margin:0 0 18px;font-size:17px;">Hello {{username}},</p>' +
+    '<p style="margin:0 0 14px;">We noticed you have not visited <strong>ModXnet</strong> in a while. We understand life gets busy.</p>' +
+    '<p style="margin:0 0 16px;font-weight:600;">Here is what you may have missed:</p>' +
     '<ul style="margin:0 0 20px;padding-left:20px;">' +
-    '<li style="margin-bottom:8px;">🔥 <strong>GTA V Mobile</strong> — Full open world, now in your pocket</li>' +
-    '<li style="margin-bottom:8px;">🏎️ <strong>Forza Horizon 5 Mobile</strong> — Stunning graphics on Android</li>' +
-    '<li style="margin-bottom:8px;">🚗 <strong>Assetto Corsa Mobile</strong> — The most realistic racing experience on mobile</li>' +
-    '<li style="margin-bottom:8px;">🚛 <strong>Euro Truck Simulator 2 Mobile</strong> — Chill and drive anywhere</li>' +
+    '<li style="margin-bottom:8px;"><strong>GTA V Mobile</strong> - Full open world on your phone</li>' +
+    '<li style="margin-bottom:8px;"><strong>Forza Horizon 5 Mobile</strong> - High-quality graphics on Android</li>' +
+    '<li style="margin-bottom:8px;"><strong>Assetto Corsa Mobile</strong> - Realistic racing on mobile</li>' +
+    '<li style="margin-bottom:8px;"><strong>Euro Truck Simulator 2 Mobile</strong> - Relaxed driving anywhere</li>' +
     '</ul>' +
-    '<p style="margin:0 0 12px;">All free. All available right now on <strong>ModXNet</strong>.</p>' +
-    '<p style="margin:0 0 24px;">These aren\'t basic mobile games — they\'re the full PC experience, optimized for Android.</p>' +
+    '<p style="margin:0 0 12px;">Everything listed is free and available on <strong>ModXnet</strong> right now.</p>' +
+    '<p style="margin:0 0 24px;">These are full PC-style experiences, optimized for Android - not stripped-down clones.</p>' +
     '<p style="margin:0 0 28px;text-align:center;">' +
-    '<a href="{{siteUrl}}/" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#00ffcc,#00c4a7);color:#0a0a0a;font-weight:700;border-radius:12px;text-decoration:none;font-size:16px;">Download now — visit ModXNet</a>' +
+    '<a href="{{siteUrl}}/" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#00ffcc,#00c4a7);color:#0a0a0a;font-weight:700;border-radius:12px;text-decoration:none;font-size:16px;">Visit ModXnet and download</a>' +
     '</p>' +
-    '<p style="margin:0;font-size:15px;color:#333;">See you on the road,<br><strong>The ModXNet Team</strong></p>' +
+    '<p style="margin:0;font-size:15px;color:#333;">Kind regards,<br><strong>The ModXnet Team</strong></p>' +
     '</div>';
   const text =
-    'Hey {{username}},\n\n' +
-    'We noticed you haven\'t visited ModXNet in a while — and we get it, life gets busy.\n\n' +
-    'But here\'s what you\'ve been missing:\n\n' +
-    '• GTA V Mobile — Full open world, now in your pocket\n' +
-    '• Forza Horizon 5 Mobile — Stunning graphics on Android\n' +
-    '• Assetto Corsa Mobile — The most realistic racing experience on mobile\n' +
-    '• Euro Truck Simulator 2 Mobile — Chill and drive anywhere\n\n' +
-    'All free. All available right now on ModXNet.\n\n' +
-    'These aren\'t basic mobile games — they\'re the full PC experience, optimized for Android.\n\n' +
-    'Download now: {{siteUrl}}/\n\n' +
-    'See you on the road,\nThe ModXNet Team';
+    'Hello {{username}},\n\n' +
+    'We noticed you have not visited ModXnet in a while. We understand life gets busy.\n\n' +
+    'Here is what you may have missed:\n\n' +
+    '- GTA V Mobile - Full open world on your phone\n' +
+    '- Forza Horizon 5 Mobile - High-quality graphics on Android\n' +
+    '- Assetto Corsa Mobile - Realistic racing on mobile\n' +
+    '- Euro Truck Simulator 2 Mobile - Relaxed driving anywhere\n\n' +
+    'Everything is free and available on ModXnet.\n\n' +
+    'Visit: {{siteUrl}}/\n\n' +
+    'Kind regards,\nThe ModXnet Team';
   return {
-    subject: 'We miss you on ModXNet — come back for free games',
+    subject: 'We miss you on ModXnet - come back for free games',
     html,
     text
   };
@@ -332,7 +344,7 @@ passport.use(new GoogleStrategy({
 }
 
 // Admin account — only this email (Google or local login) can use /admin and /api/admin/*
-const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || 'modxnet.support@gmail.com').trim().toLowerCase();
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || 'modxnetgames@gmail.com').trim().toLowerCase();
 
 function isAdminEmail(email) {
   return String(email || '').trim().toLowerCase() === ADMIN_EMAIL;
@@ -632,9 +644,12 @@ function createBroadcastMailTransport() {
   });
 }
 
-/** One-time welcome email after sign-in (not shown on site). Set WELCOME_EMAIL_ALWAYS=1 to send on every login (testing; does not update DB flag). */
+/**
+ * Send a welcome email on first login and a "welcome back" email on every subsequent login.
+ * First login  → full welcome + download tutorial, marks welcome_email_sent in DB.
+ * Return login → short "welcome back" email every single time they sign in.
+ */
 async function sendWelcomeEmailIfNeeded(userId) {
-  const alwaysSend = process.env.WELCOME_EMAIL_ALWAYS === '1';
   try {
     const row = findUserById.get(userId);
     if (!row || !String(row.email || '').trim()) {
@@ -646,13 +661,8 @@ async function sendWelcomeEmailIfNeeded(userId) {
       console.warn('[welcome-email] skip: invalid email', toAddr);
       return;
     }
-
-    const sentFlag = row.welcome_email_sent;
-    const alreadySent = sentFlag === 1 || sentFlag === true || Number(sentFlag) === 1;
-    if (alreadySent && !alwaysSend) {
-      console.log('[welcome-email] skip: already sent to', toAddr);
-      return;
-    }
+    // Skip fake/test accounts
+    if (toAddr.toLowerCase().endsWith('@modxnet.fake')) return;
 
     if (!process.env.SMTP_APP_PASSWORD || !String(process.env.SMTP_APP_PASSWORD).trim()) {
       console.error('[welcome-email] skip: SMTP_APP_PASSWORD is missing — cannot send mail');
@@ -661,47 +671,91 @@ async function sendWelcomeEmailIfNeeded(userId) {
 
     const name = String(row.username || 'there').trim();
     const safeName = escapeHtml(name);
-    const html = `
-      <div style="font-family:Georgia,Times,serif;max-width:600px;margin:0 auto;color:#222;line-height:1.55;">
-        <p style="font-size:17px;margin-bottom:16px;">Dear <strong>${safeName}</strong>, thank you for joining our community. We are pleased to have you with us.</p>
-        <p style="font-size:16px;">Every title in our catalog is offered <strong>at no cost</strong> to you. Below is a short, step-by-step guide to obtaining your download smoothly.</p>
-        <div style="margin:24px 0;padding:20px;background:#f6f9fc;border-radius:10px;border:1px solid #e2e8f0;">
-          <h2 style="margin:0 0 14px;font-size:18px;color:#0d9488;">How to download — tutorial</h2>
-          <ol style="margin:0;padding-left:22px;font-size:15px;">
-            <li style="margin-bottom:10px;">Open the game you want on ModXnet and select the <strong>Download</strong> button.</li>
-            <li style="margin-bottom:10px;">When prompted, choose any offer from the list that appears.</li>
-            <li style="margin-bottom:10px;">Start the selected offer and complete it as instructed (for example: install a suggested application and use it for about 30 seconds).</li>
-            <li style="margin-bottom:10px;">Return to ModXnet, keep the site open, and remain on the page for approximately 30 seconds so our system can verify completion.</li>
-            <li style="margin-bottom:10px;">Your download will begin or unlock automatically once the offer is confirmed.</li>
-          </ol>
-        </div>
-        <p style="font-size:15px;color:#444;">If anything is unclear, use the <strong>Help</strong> button on the website for common questions, or contact us via the form. Enjoy your games responsibly.</p>
-        <p style="margin-top:28px;font-size:13px;color:#888;">— ModXnet</p>
-      </div>`;
+    const sentFlag = row.welcome_email_sent;
+    const isFirstLogin = !(sentFlag === 1 || sentFlag === true || Number(sentFlag) === 1);
 
-    const text =
-      `Dear ${name},\n\n` +
-      'Thank you for joining ModXnet. Every title in our catalog is offered at no cost to you.\n\n' +
-      'How to download:\n' +
-      '1) Open the game on ModXnet and tap Download.\n' +
-      '2) Choose an offer from the list.\n' +
-      '3) Complete the offer (e.g. install an app and use it ~30 seconds).\n' +
-      '4) Return to ModXnet, keep the site open ~30 seconds for verification.\n' +
-      '5) Your download unlocks when the offer is confirmed.\n\n' +
-      'Use the Help button on the site for common questions, or the contact form if you need help.\n\n' +
-      '— ModXnet';
+    let subject, html, text;
 
-    console.log('[welcome-email] sending from', SMTP_USER, '→', toAddr, '(user id', userId + ')');
+    if (isFirstLogin) {
+      subject = 'Welcome to ModXnet - your free game download guide';
+      html = emailHtmlDocument(
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;background:#0d0d1a;color:#e0e0e0;border-radius:16px;overflow:hidden;">' +
+          '<div style="background:linear-gradient(135deg,#00ffcc,#00c4a7);padding:32px 28px 24px;text-align:center;">' +
+          '<h1 style="margin:0;font-size:26px;color:#0a0a0a;font-weight:800;letter-spacing:-0.5px;">Welcome to ModXnet</h1>' +
+          '<p style="margin:8px 0 0;font-size:15px;color:#0a4040;">Hello <strong>' + safeName + '</strong>, your account is ready.</p>' +
+          '</div>' +
+          '<div style="padding:28px 28px 12px;">' +
+          '<p style="font-size:16px;margin:0 0 18px;line-height:1.6;">Every game in our catalog is <strong style="color:#00ffcc;">free</strong> for you. Follow these steps to download:</p>' +
+          '<div style="background:#1a1a2e;border-radius:12px;padding:20px 24px;margin-bottom:20px;border:1px solid rgba(0,255,204,0.15);">' +
+          '<h2 style="margin:0 0 16px;font-size:17px;color:#00ffcc;">How to download</h2>' +
+          '<ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.8;color:#ccc;">' +
+          '<li>Open any game page on <strong>ModXnet</strong> and select <strong>Download</strong>.</li>' +
+          '<li>Choose an offer from the list.</li>' +
+          '<li>Complete the offer (for example: install the suggested app and use it for about 30 seconds).</li>' +
+          '<li>Return to ModXnet and keep the page open for about 30 seconds while we verify completion.</li>' +
+          '<li>Your download will unlock automatically once verification succeeds.</li>' +
+          '</ol></div>' +
+          '<p style="font-size:14px;color:#888;margin:0 0 24px;">If you need help, use the <strong style="color:#00ffcc;">Help</strong> section on the site or our contact form. We aim to reply promptly.</p>' +
+          '</div>' +
+          '<div style="background:#111124;padding:16px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">' +
+          '<a href="https://modxnet.com" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#00ffcc,#00c4a7);color:#0a0a0a;font-weight:700;border-radius:10px;text-decoration:none;font-size:15px;">Browse free games at modxnet.com</a>' +
+          '<p style="margin:14px 0 0;font-size:12px;color:#555;">ModXnet | modxnet.com</p>' +
+          '</div></div>'
+      );
+      text =
+        `Hello ${name},\n\n` +
+        'Welcome to ModXnet. Every game in our catalog is free for you.\n\n' +
+        'HOW TO DOWNLOAD:\n' +
+        '1) Open any game on ModXnet and select Download.\n' +
+        '2) Choose an offer from the list.\n' +
+        '3) Complete the offer (for example install the suggested app and use it for about 30 seconds).\n' +
+        '4) Return to ModXnet and keep the page open for about 30 seconds for verification.\n' +
+        '5) Your download unlocks automatically once verification succeeds.\n\n' +
+        'For help, use the Help section or the contact form on the site.\n\n' +
+        'https://modxnet.com\n\n' +
+        'Kind regards,\nThe ModXnet Team';
+      markWelcomeEmailSent.run(userId);
+    } else {
+      subject = 'Welcome back to ModXnet';
+      html = emailHtmlDocument(
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;background:#0d0d1a;color:#e0e0e0;border-radius:16px;overflow:hidden;">' +
+          '<div style="background:linear-gradient(135deg,#00ffcc,#00c4a7);padding:28px;text-align:center;">' +
+          '<h1 style="margin:0;font-size:24px;color:#0a0a0a;font-weight:800;">Welcome back, ' + safeName + '</h1>' +
+          '<p style="margin:8px 0 0;font-size:14px;color:#0a4040;">Thank you for returning to ModXnet.</p>' +
+          '</div>' +
+          '<div style="padding:28px;">' +
+          '<p style="font-size:16px;margin:0 0 20px;line-height:1.6;">We are glad to see you again. Our catalog remains <strong style="color:#00ffcc;">free</strong> to use. Explore new titles or continue where you left off.</p>' +
+          '<div style="background:#1a1a2e;border-radius:12px;padding:18px 22px;margin-bottom:22px;border:1px solid rgba(0,255,204,0.15);">' +
+          '<p style="margin:0;font-size:14px;color:#aaa;line-height:1.7;">' +
+          '- Browse the full catalog and unlock games when you are ready<br>' +
+          '- New titles are added regularly<br>' +
+          '- For support, use the Help section or contact form on the website' +
+          '</p></div>' +
+          '<div style="text-align:center;">' +
+          '<a href="https://modxnet.com" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#00ffcc,#00c4a7);color:#0a0a0a;font-weight:700;border-radius:10px;text-decoration:none;font-size:15px;">Go to modxnet.com</a>' +
+          '</div></div>' +
+          '<div style="background:#111124;padding:14px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">' +
+          '<p style="margin:0;font-size:12px;color:#555;">ModXnet | modxnet.com</p>' +
+          '</div></div>'
+      );
+      text =
+        `Welcome back, ${name}.\n\n` +
+        'Thank you for returning to ModXnet. Our catalog is still free to use.\n\n' +
+        'Visit: https://modxnet.com\n\n' +
+        'Kind regards,\nThe ModXnet Team';
+    }
+
+    console.log('[welcome-email] sending (%s) from %s -> %s (user id %s)',
+      isFirstLogin ? 'first-login' : 'welcome-back', SMTP_USER, toAddr, userId);
     const info = await transporter.sendMail({
       from: `"ModXnet" <${SMTP_USER}>`,
       to: toAddr,
       replyTo: CONTACT_INBOX,
-      subject: 'Welcome to ModXnet — your download guide',
+      subject,
       text,
       html
     });
     console.log('[welcome-email] sent OK, messageId:', info && info.messageId);
-    if (!alwaysSend) markWelcomeEmailSent.run(userId);
   } catch (err) {
     console.error('[welcome-email] FAILED:', err.code || '', err.message, err.response || '');
   }
@@ -849,28 +903,31 @@ app.post('/api/contact', async (req, res) => {
     let translatedBlock = '';
     const translated = await translateContactMessageForInbox(rawMsg);
     if (translated) {
-      translatedBlock = `
-          <h3 style="margin-top:20px;color:#0d9488;">Professional English (for support)</h3>
-          <div style="background:#e8faf8;padding:15px;border-radius:8px;border:1px solid #b2dfdb;white-space:pre-wrap;">${escapeHtml(translated)}</div>`;
+      translatedBlock =
+        '<p style="margin:20px 0 8px;font-weight:600;color:#0d9488;">English summary (for support)</p>' +
+        '<div style="background:#f0fdfa;padding:16px;border-radius:8px;border:1px solid #99f6e4;white-space:pre-wrap;font-size:14px;">' +
+        escapeHtml(translated) +
+        '</div>';
     }
+
+    const contactInner =
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;line-height:1.5;">' +
+      '<h2 style="color:#0d9488;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px;font-size:20px;">New contact form message</h2>' +
+      '<p style="margin:0 0 8px;"><strong>From:</strong> ' + safeName + '</p>' +
+      '<p style="margin:0 0 16px;"><strong>Reply-to email:</strong> <a href="mailto:' + encodeURIComponent(rawEmail) + '">' + safeEmail + '</a></p>' +
+      '<p style="margin:0 0 8px;font-weight:600;">Message</p>' +
+      '<div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb;white-space:pre-wrap;font-size:15px;">' + safeMsg + '</div>' +
+      translatedBlock +
+      '<hr style="margin:24px 0 16px;border:none;border-top:1px solid #e5e7eb;">' +
+      '<p style="color:#6b7280;font-size:12px;margin:0;">This message was submitted through the ModXnet website contact form.</p>' +
+      '</div>';
 
     await transporter.sendMail({
       from: `"ModXnet Contact" <${SMTP_USER}>`,
       to: CONTACT_INBOX,
       replyTo: rawEmail,
-      subject: `ModXnet Contact: ${rawName}`,
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <h2 style="color:#00ffcc;border-bottom:1px solid #eee;padding-bottom:10px;">New Contact Message</h2>
-          <p><strong>From:</strong> ${safeName}</p>
-          <p><strong>Email:</strong> <a href="mailto:${rawEmail}">${safeEmail}</a></p>
-          <p><strong>Original message:</strong></p>
-          <div style="background:#f5f5f5;padding:15px;border-radius:8px;white-space:pre-wrap;">${safeMsg}</div>
-          ${translatedBlock}
-          <hr style="margin-top:20px;border:none;border-top:1px solid #eee;">
-          <p style="color:#999;font-size:12px;">Sent from ModXnet Contact Form</p>
-        </div>
-      `
+      subject: `ModXnet contact: ${rawName}`,
+      html: emailHtmlDocument(contactInner)
     });
 
     res.json({ success: true, message: 'Message sent successfully!' });
@@ -1941,6 +1998,12 @@ app.post('/api/admin/gamepage/:slug/rename', requireAdmin, (req, res) => {
     if (fs.existsSync(newDir)) return res.status(400).json({ error: 'A folder with name "' + cleanSlug + '" already exists' });
 
     fs.renameSync(oldDir, newDir);
+    // Keep the game's offer download links attached to the renamed page
+    try {
+      if (!getAdblueBySlug.get(cleanSlug)) {
+        db.prepare('UPDATE adblue_config SET game_slug = ? WHERE game_slug = ?').run(cleanSlug, oldSlug);
+      }
+    } catch (e) { /* non-critical */ }
     res.json({ success: true, slug: cleanSlug });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2047,13 +2110,6 @@ app.post('/api/admin/gamepages', requireAdmin, (req, res) => {
       else starsHtml += '<i class="far fa-star star-icon" data-rating="' + i + '"></i>';
     }
     
-    // Get adblue config for this game (if exists)
-    let adConfig = null;
-    try { adConfig = getAdblueBySlug.get(slug); } catch(e) {}
-    const adVarName = (adConfig && adConfig.variable_name) || 'PKiWi_Ojz_wYrvyc';
-    const adItValue = (adConfig && adConfig.it_value) || 0;
-    const adKeyValue = (adConfig && adConfig.key_value) || '';
-    const adScriptUrl = (adConfig && adConfig.script_url) || 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js';
     
     // Find a template game folder to copy style.css and script.js from
     const templateDir = path.join(__dirname, 'GTA-5-Mobile');
@@ -2084,12 +2140,6 @@ app.post('/api/admin/gamepages', requireAdmin, (req, res) => {
     <style>
         @font-face { font-family: 'Exo 2'; font-display: swap; }
     </style>
-    <!-- AdBlueMedia Configuration -->
-    <script type="text/javascript">
-        window.${adVarName} = {"it":${adItValue},"key":"${adKeyValue}"};
-        var ${adVarName} = {"it":${adItValue},"key":"${adKeyValue}"};
-    </script>
-    <script src="${adScriptUrl}" async></script>
 </head>
 <body>
     <header class="header">
@@ -2186,11 +2236,8 @@ ${(Array.isArray(features) && features.length > 0 ? features : ['Feature 1 — E
         <button type="button" class="bottom-nav-item bottom-nav-auth"><i class="fas fa-user"></i><span>Login</span></button>
     </nav>
 
-    <div id="content-locker-container" class="content-locker-container">
-        <div id="content-locker-wrapper" class="content-locker-wrapper"></div>
-    </div>
-
     <script src="script.js"></script>
+    <script src="../offers-wall.js"></script>
     <script src="../game-interactions.js"></script>
     <script src="../detect-blocker.js"></script>
 </body>
@@ -2234,7 +2281,352 @@ app.post('/api/admin/upload', requireAdmin, upload.single('image'), (req, res) =
   res.json({ success: true, url });
 });
 
-// ========== ADMIN: ADBLUE CONFIG ==========
+// ========== ADBLUEMEDIA OFFERS API ==========
+// Game pages call /api/offers/:slug, which fetches the AdBlueMedia offer feed for the visitor
+// (their IP + browser, so offers match their country and device). Each attempt gets a token sent as
+// s1; AdBlueMedia's postback calls /api/adblue/postback with that token when an offer converts, and
+// the page polls /api/offers/status/:token until it can reveal the download link.
+const OFFER_FEED_DEFAULT = 'https://dtvpp42hfuyb2.cloudfront.net/public/offers/feed.php';
+const OFFER_TOKEN_RE = /^[a-f0-9]{24}$/;
+const offerRateHits = new Map();
+
+function cfgValue(key, fallback) {
+  try {
+    const row = getConfig.get(key);
+    if (row && String(row.value).trim()) return String(row.value).trim();
+  } catch (e) {}
+  return fallback == null ? '' : String(fallback);
+}
+
+function getOfferSettings() {
+  let secret = cfgValue('adblue_postback_secret');
+  if (!secret) {
+    secret = crypto.randomBytes(16).toString('hex');
+    setConfig.run({ key: 'adblue_postback_secret', value: secret });
+  }
+  const count = parseInt(cfgValue('adblue_offer_count', '3'), 10);
+  return {
+    user_id: cfgValue('adblue_user_id', process.env.ADBLUE_USER_ID || ''),
+    api_key: cfgValue('adblue_api_key', process.env.ADBLUE_API_KEY || ''),
+    feed_url: cfgValue('adblue_feed_url', OFFER_FEED_DEFAULT),
+    offer_count: Math.min(10, Math.max(1, isNaN(count) ? 3 : count)),
+    postback_secret: secret
+  };
+}
+
+function getPostbackUrl(settings) {
+  return getPublicBaseUrl() + '/api/adblue/postback?secret=' + settings.postback_secret +
+    '&s1={s1}&s2={s2}&payout={payout}&offer_id={offer_id}&offer_name={offer_name}';
+}
+
+function getVisitorIp(req) {
+  let ip = String(req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  return ip;
+}
+
+function isPublicIp(ip) {
+  if (!ip || ip === '::1') return false;
+  if (/^(10\.|127\.|192\.168\.|169\.254\.|0\.)/.test(ip)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return false;
+  if (/^(fc|fd|fe80)/i.test(ip)) return false;
+  return true;
+}
+
+function offerRateLimited(ip) {
+  const now = Date.now();
+  const hits = (offerRateHits.get(ip) || []).filter(t => now - t < 60000);
+  hits.push(now);
+  offerRateHits.set(ip, hits);
+  if (offerRateHits.size > 5000) offerRateHits.clear();
+  return hits.length > 30;
+}
+
+function safeHttpUrl(u) {
+  try {
+    const parsed = new URL(String(u || ''));
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') ? parsed.href : '';
+  } catch (e) { return ''; }
+}
+
+/** A stored download link: absolute http(s) URL or a site path like /files/x.apk */
+function safeDownloadLink(u) {
+  const v = String(u || '').trim();
+  if (!v) return '';
+  if (v.startsWith('/') && !v.startsWith('//')) return v;
+  return safeHttpUrl(v);
+}
+
+/** Fetch the feed for one visitor. Returns the raw offer array (may be empty). */
+async function fetchOfferFeed(settings, { ip, userAgent, acceptLanguage, s1, s2 }) {
+  if (!settings.user_id || !settings.api_key) throw new Error('Offer feed is not configured (user ID / API key missing)');
+  const url = new URL(settings.feed_url);
+  url.searchParams.set('user_id', settings.user_id);
+  url.searchParams.set('api_key', settings.api_key);
+  url.searchParams.set('s1', s1 || '');
+  url.searchParams.set('s2', s2 || '');
+  if (isPublicIp(ip)) url.searchParams.set('ip', ip);
+  if (userAgent) url.searchParams.set('user_agent', userAgent);
+  const r = await fetch(url.href, {
+    headers: {
+      'User-Agent': userAgent || 'Mozilla/5.0',
+      'Accept': 'application/json',
+      'Accept-Language': acceptLanguage || 'en-US,en;q=0.9'
+    },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!r.ok) throw new Error('Offer feed HTTP ' + r.status);
+  const text = (await r.text()).trim();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error('Offer feed returned non-JSON: ' + text.slice(0, 120)); }
+  return Array.isArray(data) ? data : [];
+}
+
+// AdBlueMedia feed category ids (seen in the feed; text checks below are the fallback if ids change)
+const OFFER_CAT_CPI = '66f5d901b4420dfa9e3da06c';   // install + open the app
+const OFFER_CAT_CPE = '66f5d95c86c1b6230a1ee415';   // install + play / engage (also free trials)
+const OFFER_HARD_RE = /\b(trial|subscri|deposit|purchase|buy|credit card|payment|spend|invest)/i;
+const OFFER_INSTALL_RE = /\b(install|download|run the app|open the app|launch)/i;
+const OFFER_PLAY_RE = /\b(play|reach level|level \d|install)/i;
+
+/** App-install offers convert best, so they go first. 0 = install + open, 1 = install + play,
+ *  2 = everything else (surveys, sign-ups), 3 = trials or anything that needs payment. */
+function offerTier(o) {
+  const conv = String(o.conversion || '');
+  const name = String(o.name || '');
+  const cat = String(o.category_id || '');
+  if (OFFER_HARD_RE.test(conv)) return 3;
+  const playTask = /\bplay\b|\blevel\b|\bminutes?\b|\bmins?\b/i.test(conv);
+  if (cat === OFFER_CAT_CPI || /\bCPI\b/.test(name) || (OFFER_INSTALL_RE.test(conv) && !playTask)) return 0;
+  if (cat === OFFER_CAT_CPE || /\bCPE\b/.test(name) || OFFER_PLAY_RE.test(conv)) return 1;
+  return 2;
+}
+
+/** Stable sort by tier; within a tier keep AdBlueMedia's own order (it ranks by EPC). */
+function rankOffers(list) {
+  return list
+    .map((o, i) => ({ o, i, t: offerTier(o) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map(x => x.o);
+}
+
+function publicOffer(o) {
+  return {
+    id: String(o.id || ''),
+    name: String(o.name || ''),
+    anchor: String(o.anchor || o.name || 'Complete this offer'),
+    conversion: String(o.conversion || ''),
+    icon: safeHttpUrl(o.network_icon),
+    url: safeHttpUrl(o.url),
+    impression_url: safeHttpUrl(o.impression_url)
+  };
+}
+
+// ---- Popup text (Admin > Ad Config). Placeholders: {game} {platform} {other}.
+// In "note" style fields, *word* is highlighted yellow and _word_ green.
+const POPUP_TEXT_DEFAULTS = {
+  brand_name: 'ModXnet',
+  brand_logo: '/favicon.png',
+  badge_text: 'Free · 1 task',
+  title: 'Download {game}',
+  subtitle: 'Free {platform} download',
+  note: 'After completing *ONE* task, you will be able to download the Game for _FREE_.',
+  download_button: 'Download Now',
+  loading_button: 'Loading…',
+  step1: 'Click on any offer from the list',
+  step2: 'Install an app and run it for 30 seconds, or complete a short survey',
+  step3: 'Your download will start automatically',
+  loading_offers: 'Loading offers…',
+  no_offers: 'No offers are available for your device or country right now. Turn off any VPN and try again.',
+  retry_button: 'Try again',
+  verify_text: 'Checking for verification',
+  after_click: 'Complete the offer, then come back to this page. Your download will start automatically.',
+  done_note: 'Task completed! Your _FREE_ download is ready.',
+  download_starting: 'Your download is starting… If it does not start, tap Download Now.',
+  starting_button: 'Starting download…',
+  link_missing: 'Your offer is confirmed, but the download link for this game is not ready yet. Please contact support from the Help page and mention this game.',
+  not_available: 'This game is not available for {platform} yet. The {other} version is ready below.',
+  other_platform: 'Get the {other} version instead',
+  banner_image: '',
+  game_logo: ''
+};
+const POPUP_TEXT_MAX = 600;
+
+/** Keep only known keys with string values; drop empty strings (empty = inherit). */
+function cleanPopupTexts(input) {
+  const out = {};
+  if (!input || typeof input !== 'object') return out;
+  for (const key of Object.keys(POPUP_TEXT_DEFAULTS)) {
+    if (typeof input[key] !== 'string') continue;
+    const v = input[key].trim().slice(0, POPUP_TEXT_MAX);
+    if (!v) continue;
+    // '-' hides that part of the popup; image fields must otherwise be a URL or site path
+    if (v !== '-' && (key === 'brand_logo' || key === 'banner_image' || key === 'game_logo') && !safeDownloadLink(v)) continue;
+    out[key] = v;
+  }
+  return out;
+}
+
+function parsePopupTexts(json) {
+  try { return cleanPopupTexts(JSON.parse(json || '{}')); } catch (e) { return {}; }
+}
+
+function getGlobalPopupTexts() {
+  return parsePopupTexts(cfgValue('offer_popup_texts', '{}'));
+}
+
+/** defaults <- global admin text <- this game's own overrides */
+function popupTextsFor(slug) {
+  let row = null;
+  try { row = slug ? getAdblueBySlug.get(slug) : null; } catch (e) {}
+  return Object.assign({}, POPUP_TEXT_DEFAULTS, getGlobalPopupTexts(), parsePopupTexts(row && row.popup_texts));
+}
+
+// Public: popup text for a game page (game pages fetch this when they load)
+app.get('/api/offers-config/:gameSlug', (req, res) => {
+  const slug = String(req.params.gameSlug || '');
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(slug)) return res.status(400).json({ error: 'Invalid game' });
+  res.set('Cache-Control', 'no-cache');
+  res.json({ texts: popupTextsFor(slug) });
+});
+
+function downloadLinksFor(slug) {
+  let row = null;
+  try { row = getAdblueBySlug.get(slug); } catch (e) {}
+  return {
+    android: safeDownloadLink(row && row.android_url),
+    ios: safeDownloadLink(row && row.ios_url)
+  };
+}
+
+// Public: has this attempt been completed? Reveals the download links only once it has.
+// (Registered before /api/offers/:gameSlug so "status" is never read as a game slug.)
+app.get('/api/offers/status/:token', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const token = String(req.params.token || '');
+  if (!OFFER_TOKEN_RE.test(token)) return res.status(400).json({ error: 'Invalid token' });
+  const session = getOfferSession.get(token);
+  if (!session) return res.status(404).json({ error: 'Unknown session' });
+  if (!session.completed_at) return res.json({ completed: false });
+  res.json({ completed: true, downloads: downloadLinksFor(session.game_slug) });
+});
+
+// Public: offers for a game page. Pass ?token= to keep the same attempt across popup re-opens.
+app.get('/api/offers/:gameSlug', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const slug = String(req.params.gameSlug || '');
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(slug)) return res.status(400).json({ error: 'Invalid game' });
+  const ip = getVisitorIp(req);
+  if (offerRateLimited(ip)) return res.status(429).json({ error: 'Too many requests, please wait a minute.' });
+
+  try {
+    let token = String(req.query.token || '');
+    let session = OFFER_TOKEN_RE.test(token) ? getOfferSession.get(token) : null;
+    if (session && session.game_slug !== slug) session = null;
+    if (session && session.completed_at) {
+      return res.json({ token, completed: true, downloads: downloadLinksFor(slug), offers: [] });
+    }
+    if (!session) {
+      token = crypto.randomBytes(12).toString('hex');
+      createOfferSession.run({ token, game_slug: slug, ip });
+    }
+
+    const settings = getOfferSettings();
+    const raw = await fetchOfferFeed(settings, {
+      ip,
+      userAgent: String(req.get('user-agent') || '').slice(0, 400),
+      acceptLanguage: String(req.get('accept-language') || '').slice(0, 200),
+      s1: token,
+      s2: slug
+    });
+    const offers = rankOffers(raw).map(publicOffer).filter(o => o.url).slice(0, settings.offer_count);
+    res.json({ token, completed: false, offers });
+  } catch (err) {
+    console.error('[offers] feed error:', err.message);
+    res.status(502).json({ error: 'Offers are temporarily unavailable. Please try again in a moment.' });
+  }
+});
+
+// AdBlueMedia postback (set this URL in the AdBlueMedia dashboard; admin > Ad Config shows it)
+app.all('/api/adblue/postback', (req, res) => {
+  const q = Object.assign({}, req.query, (req.body && typeof req.body === 'object') ? req.body : {});
+  const settings = getOfferSettings();
+  const given = Buffer.from(String(q.secret || ''));
+  const expected = Buffer.from(settings.postback_secret);
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+    console.warn('[offers] postback rejected: bad secret from', getVisitorIp(req));
+    return res.status(403).send('0');
+  }
+  const token = String(q.s1 || q.sub1 || q.subid || q.aff_sub || '').trim().toLowerCase();
+  const status = String(q.status || '').toLowerCase();
+  const payout = parseFloat(q.payout || q.amount || 0) || 0;
+  if (['0', 'reversed', 'reversal', 'chargeback', 'rejected'].includes(status) || payout < 0) {
+    console.warn('[offers] postback reversal ignored:', JSON.stringify(q));
+    return res.send('1');
+  }
+  if (!OFFER_TOKEN_RE.test(token) || !getOfferSession.get(token)) {
+    console.warn('[offers] postback with unknown s1:', token, JSON.stringify(q));
+    return res.send('1');
+  }
+  completeOfferSession.run({
+    token,
+    offer_id: String(q.offer_id || q.oid || '').slice(0, 100),
+    offer_name: String(q.offer_name || q.name || '').slice(0, 200),
+    payout
+  });
+  console.log('[offers] conversion', token, q.s2 || '', q.offer_name || q.offer_id || '', payout);
+  res.send('1');
+});
+
+// Housekeeping: drop unfinished attempts older than a week
+setInterval(() => { try { purgeOldOfferSessions.run(); } catch (e) {} }, 6 * 60 * 60 * 1000).unref();
+
+// ========== ADMIN: OFFERS SETTINGS + PER-GAME DOWNLOAD LINKS ==========
+app.get('/api/admin/adblue/settings', requireAdmin, (req, res) => {
+  try {
+    const s = getOfferSettings();
+    let stats = { sessions: 0, completed: 0, payout: 0 };
+    try { stats = getOfferStats.get() || stats; } catch (e) {}
+    res.json({
+      user_id: s.user_id, api_key: s.api_key, feed_url: s.feed_url, offer_count: s.offer_count,
+      postback_url: getPostbackUrl(s), stats,
+      popup_texts: getGlobalPopupTexts(), popup_defaults: POPUP_TEXT_DEFAULTS
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/admin/adblue/settings', requireAdmin, (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.user_id !== undefined) setConfig.run({ key: 'adblue_user_id', value: String(b.user_id).trim() });
+    if (b.api_key !== undefined) setConfig.run({ key: 'adblue_api_key', value: String(b.api_key).trim() });
+    if (b.feed_url !== undefined) {
+      setConfig.run({ key: 'adblue_feed_url', value: safeHttpUrl(String(b.feed_url).trim()) || OFFER_FEED_DEFAULT });
+    }
+    if (b.offer_count !== undefined) {
+      const n = Math.min(10, Math.max(1, parseInt(b.offer_count, 10) || 3));
+      setConfig.run({ key: 'adblue_offer_count', value: String(n) });
+    }
+    if (b.popup_texts !== undefined) {
+      setConfig.run({ key: 'offer_popup_texts', value: JSON.stringify(cleanPopupTexts(b.popup_texts)) });
+    }
+    if (b.regenerate_secret) setConfig.run({ key: 'adblue_postback_secret', value: crypto.randomBytes(16).toString('hex') });
+    const s = getOfferSettings();
+    res.json({ success: true, user_id: s.user_id, api_key: s.api_key, feed_url: s.feed_url, offer_count: s.offer_count, postback_url: getPostbackUrl(s), popup_texts: getGlobalPopupTexts() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin: fetch the feed as the admin's own browser would see it
+app.get('/api/admin/adblue/test-feed', requireAdmin, async (req, res) => {
+  try {
+    const raw = await fetchOfferFeed(getOfferSettings(), {
+      ip: getVisitorIp(req), userAgent: String(req.get('user-agent') || ''),
+      acceptLanguage: String(req.get('accept-language') || ''), s1: 'admintest', s2: 'admin'
+    });
+    res.json({ success: true, count: raw.length, offers: raw.map(o => ({ name: o.name, anchor: o.anchor, payout: o.payout })) });
+  } catch (err) { res.status(502).json({ success: false, error: err.message }); }
+});
+
 app.get('/api/admin/adblue', requireAdmin, (req, res) => {
   try { res.json(getAllAdblue.all()); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -2242,63 +2634,29 @@ app.get('/api/admin/adblue', requireAdmin, (req, res) => {
 
 app.put('/api/admin/adblue/:gameSlug', requireAdmin, (req, res) => {
   try {
-    const { variable_name, it_value, key_value, script_url } = req.body;
-    const varName = variable_name || 'PKiWi_Ojz_wYrvyc';
-    const itVal = parseInt(it_value) || 0;
-    const keyVal = key_value || '';
-    const scriptVal = script_url || 'https://da4talg8ap14y.cloudfront.net/5b1c47d.js';
-
-    upsertAdblue.run({
-      game_slug: req.params.gameSlug,
-      variable_name: varName,
-      it_value: itVal,
-      key_value: keyVal,
-      script_url: scriptVal
-    });
-
-    // Also update the game page HTML with the new it/key values
-    try {
-      const pagePath = path.join(__dirname, req.params.gameSlug, 'index.html');
-      if (fs.existsSync(pagePath)) {
-        let html = fs.readFileSync(pagePath, 'utf8');
-        // Replace the window.VAR = {"it":...,"key":"..."} pattern
-        html = html.replace(
-          /window\.\w+\s*=\s*\{"it"\s*:\s*\d+\s*,\s*"key"\s*:\s*"[^"]*"\s*\}/g,
-          'window.' + varName + ' = {"it":' + itVal + ',"key":"' + keyVal + '"}'
-        );
-        // Replace the var VAR = {"it":...,"key":"..."} pattern
-        html = html.replace(
-          /var\s+\w+\s*=\s*\{"it"\s*:\s*\d+\s*,\s*"key"\s*:\s*"[^"]*"\s*\}/g,
-          'var ' + varName + ' = {"it":' + itVal + ',"key":"' + keyVal + '"}'
-        );
-        // Replace the script src if changed
-        html = html.replace(
-          /(<script\s+src=")https:\/\/da4talg8ap14y\.cloudfront\.net\/[^"]*("[^>]*><\/script>)/i,
-          '$1' + scriptVal + '$2'
-        );
-        fs.writeFileSync(pagePath, html, 'utf8');
-      }
-    } catch(e) { /* non-critical: page HTML update failed */ }
-
-    res.json({ success: true, configs: getAllAdblue.all() });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Public: get adblue config for a game (used by game pages)
-app.get('/api/adblue/:gameSlug', (req, res) => {
-  try {
-    const config = getAdblueBySlug.get(req.params.gameSlug);
-    if (!config || !config.it_value || !config.key_value) {
-      return res.json({ configured: false });
+    const clean = (u) => {
+      const v = String(u || '').trim();
+      if (!v) return '';
+      const ok = safeDownloadLink(v);
+      if (!ok) throw new Error('Download links must start with https://, http:// or /');
+      return ok;
+    };
+    const b = req.body || {};
+    // Each part is optional so the game editor (links only) never wipes the popup text, and vice versa
+    if (b.android_url !== undefined || b.ios_url !== undefined) {
+      const current = getAdblueBySlug.get(req.params.gameSlug) || {};
+      setAdblueLinks.run({
+        game_slug: req.params.gameSlug,
+        android_url: b.android_url !== undefined ? clean(b.android_url) : (current.android_url || ''),
+        ios_url: b.ios_url !== undefined ? clean(b.ios_url) : (current.ios_url || '')
+      });
     }
-    res.json({
-      configured: true,
-      variable_name: config.variable_name,
-      it_value: config.it_value,
-      key_value: config.key_value,
-      script_url: config.script_url
-    });
-  } catch (err) { res.json({ configured: false }); }
+    if (b.popup_texts !== undefined) {
+      const t = cleanPopupTexts(b.popup_texts);
+      setAdbluePopupTexts.run({ game_slug: req.params.gameSlug, popup_texts: Object.keys(t).length ? JSON.stringify(t) : '' });
+    }
+    res.json({ success: true, configs: getAllAdblue.all() });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // Sync: ensure every game has an adblue_config entry
@@ -2514,7 +2872,7 @@ app.post('/api/admin/email/comeback-blast', requireAdmin, (req, res) => {
             replyTo: CONTACT_INBOX,
             subject: subjectFinal,
             text: textFinal,
-            html: htmlFinal
+            html: emailHtmlDocument(htmlFinal)
           });
           sent++;
           emailBroadcastStatus.sent = sent;

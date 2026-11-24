@@ -231,6 +231,36 @@ try { db.exec(`ALTER TABLE comments ADD COLUMN sentiment TEXT DEFAULT 'positive'
 try { db.exec(`ALTER TABLE comments ADD COLUMN expires_at DATETIME DEFAULT NULL`); } catch(e) {}
 try { db.exec(`ALTER TABLE users ADD COLUMN welcome_email_sent INTEGER NOT NULL DEFAULT 0`); } catch(e) {}
 
+// ========== ADBLUEMEDIA OFFERS API (replaces the content locker) ==========
+// Per-game download links revealed after an offer is completed
+try { db.exec(`ALTER TABLE adblue_config ADD COLUMN android_url TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+try { db.exec(`ALTER TABLE adblue_config ADD COLUMN ios_url TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+// Per-game popup text overrides (JSON object; empty = use the global popup text)
+try { db.exec(`ALTER TABLE adblue_config ADD COLUMN popup_texts TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+// One row per visitor attempt; completed_at is set by the AdBlueMedia postback
+db.exec(`
+  CREATE TABLE IF NOT EXISTS offer_sessions (
+    token TEXT PRIMARY KEY,
+    game_slug TEXT NOT NULL,
+    ip TEXT NOT NULL DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME DEFAULT NULL,
+    offer_id TEXT NOT NULL DEFAULT '',
+    offer_name TEXT NOT NULL DEFAULT '',
+    payout REAL NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_offer_sessions_created ON offer_sessions(created_at);
+`);
+// Global offer feed settings (editable in admin > Ad Config)
+{
+  const seedCfg = db.prepare('INSERT OR IGNORE INTO site_config (key, value) VALUES (?, ?)');
+  seedCfg.run('adblue_user_id', String(process.env.ADBLUE_USER_ID || '').trim());
+  seedCfg.run('adblue_api_key', String(process.env.ADBLUE_API_KEY || '').trim());
+  seedCfg.run('adblue_feed_url', 'https://dtvpp42hfuyb2.cloudfront.net/public/offers/feed.php');
+  seedCfg.run('adblue_offer_count', '3');
+  seedCfg.run('adblue_postback_secret', require('crypto').randomBytes(16).toString('hex'));
+}
+
 // ========== SENTIMENT ANALYSIS ==========
 const BAD_WORDS = [
   // Profanity / insults
@@ -413,6 +443,15 @@ const getAllAdblue = db.prepare('SELECT * FROM adblue_config ORDER BY game_slug 
 const getAdblueBySlug = db.prepare('SELECT * FROM adblue_config WHERE game_slug = ?');
 const upsertAdblue = db.prepare(`INSERT INTO adblue_config (game_slug, variable_name, it_value, key_value, script_url, updated_at) VALUES (@game_slug, @variable_name, @it_value, @key_value, @script_url, datetime('now')) ON CONFLICT(game_slug) DO UPDATE SET variable_name=@variable_name, it_value=@it_value, key_value=@key_value, script_url=@script_url, updated_at=datetime('now')`);
 const deleteAdblue = db.prepare('DELETE FROM adblue_config WHERE id = ?');
+const setAdbluePopupTexts = db.prepare(`INSERT INTO adblue_config (game_slug, popup_texts, updated_at) VALUES (@game_slug, @popup_texts, datetime('now')) ON CONFLICT(game_slug) DO UPDATE SET popup_texts=@popup_texts, updated_at=datetime('now')`);
+const setAdblueLinks = db.prepare(`INSERT INTO adblue_config (game_slug, android_url, ios_url, updated_at) VALUES (@game_slug, @android_url, @ios_url, datetime('now')) ON CONFLICT(game_slug) DO UPDATE SET android_url=@android_url, ios_url=@ios_url, updated_at=datetime('now')`);
+
+// ========== OFFER SESSION HELPERS ==========
+const createOfferSession = db.prepare('INSERT INTO offer_sessions (token, game_slug, ip) VALUES (@token, @game_slug, @ip)');
+const getOfferSession = db.prepare('SELECT * FROM offer_sessions WHERE token = ?');
+const completeOfferSession = db.prepare(`UPDATE offer_sessions SET completed_at = COALESCE(completed_at, datetime('now')), offer_id=@offer_id, offer_name=@offer_name, payout=payout + @payout WHERE token=@token`);
+const purgeOldOfferSessions = db.prepare(`DELETE FROM offer_sessions WHERE completed_at IS NULL AND created_at < datetime('now', '-7 days')`);
+const getOfferStats = db.prepare(`SELECT COUNT(*) AS sessions, SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS completed, COALESCE(SUM(payout), 0) AS payout FROM offer_sessions WHERE created_at >= datetime('now', '-30 days')`);
 
 // ========== SITE CONFIG HELPERS ==========
 const getConfig = db.prepare('SELECT value FROM site_config WHERE key = ?');
@@ -468,6 +507,14 @@ module.exports = {
   getAdblueBySlug,
   upsertAdblue,
   deleteAdblue,
+  setAdblueLinks,
+  setAdbluePopupTexts,
+  // Offers API sessions
+  createOfferSession,
+  getOfferSession,
+  completeOfferSession,
+  purgeOldOfferSessions,
+  getOfferStats,
   // Admin - Config
   getConfig,
   setConfig,

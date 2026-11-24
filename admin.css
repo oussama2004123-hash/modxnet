@@ -759,3 +759,11 @@ body { font-family:'Exo 2',sans-serif; background:var(--bg); color:var(--text); 
   .stats-grid { grid-template-columns:1fr; }
   .modal { border-radius:12px; }
 }
+
+/* Popup text editors (Ad Config) */
+#popupTextsFields textarea, #adbluePopupFields textarea {
+  width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border2);
+  border-radius:var(--radius-sm); color:var(--text); font-family:inherit; font-size:0.88rem;
+  line-height:1.45; min-height:62px; resize:vertical; transition:var(--transition);
+}
+#popupTextsFields textarea:focus, #adbluePopupFields textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
