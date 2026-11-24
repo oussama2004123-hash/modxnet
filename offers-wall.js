@@ -282,6 +282,11 @@
             if (state.open && document.visibilityState === 'visible' && state.token) checkStatus();
         });
         document.body.appendChild(els.overlay);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', fitOverlay);
+            window.visualViewport.addEventListener('scroll', fitOverlay);
+        }
+        window.addEventListener('resize', fitOverlay);
     }
 
     function platformName(p) { return p === 'ios' ? 'iOS' : 'Android'; }
@@ -536,11 +541,33 @@
         if (!els.dl.classList.contains('ow-busy')) setDlBusy(false);
     }
 
+    /**
+     * Pin the popup to the part of the page the visitor can actually see. On phones, if anything
+     * on the page is wider than the screen (e.g. a long link in a review), the browser widens the
+     * page and a plain full-screen overlay would be centred off to the side.
+     */
+    function fitOverlay() {
+        if (!els.overlay || !state.open) return;
+        var vv = window.visualViewport;
+        var s = els.overlay.style;
+        if (vv && (Math.abs(window.innerWidth - vv.width) > 2 || Math.abs(window.innerHeight - vv.height) > 2)) {
+            s.left = vv.offsetLeft + 'px';
+            s.top = vv.offsetTop + 'px';
+            s.width = vv.width + 'px';
+            s.height = vv.height + 'px';
+            s.right = 'auto';
+            s.bottom = 'auto';
+        } else {
+            s.left = s.top = s.width = s.height = s.right = s.bottom = '';
+        }
+    }
+
     function open() {
         build();
         applyTexts();
         state.open = true;
         els.overlay.classList.add('ow-open');
+        fitOverlay();
         els.overlay.scrollTop = 0;
         document.body.classList.add('ow-lock');
         if (state.unlocked) { renderUnlocked(state.unlocked, false); return; }

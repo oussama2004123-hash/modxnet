@@ -18,6 +18,10 @@
   // ========== INJECT STYLES ==========
   var css = document.createElement('style');
   css.textContent = [
+    /* Long words/links in user reviews must wrap, or they widen the whole page on phones */
+    '.review-item, .comment-item, .review-text, .comment-text, .review-author, .comment-author {',
+    '  overflow-wrap:anywhere; word-break:break-word; min-width:0; max-width:100%; }',
+    '.reviews-list, .comments-list { max-width:100%; overflow:hidden; }',
     /* Review/Comment form styles */
     '.interaction-form { display:none; margin-top:12px; padding:16px; background:rgba(255,255,255,0.03);',
     '  border:1px solid rgba(255,255,255,0.08); border-radius:14px; }',
