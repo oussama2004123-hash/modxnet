@@ -3042,7 +3042,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 app.use('/uploads', express.static(uploadDir));
 
 // ========== STATIC FILES (after all /api routes) ==========
-// ========== SITEMAP (approved 2026-11-25; robots.txt is managed by Cloudflare) ==========
+// ========== SITEMAP (approved 2026-11-25; robots.txt is a static file in the project root) ==========
 // Lists the homepage, /all-games, category pages and every visible game page that exists on disk.
 app.get('/sitemap.xml', (req, res) => {
   try {
