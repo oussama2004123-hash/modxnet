@@ -16,6 +16,7 @@ const {
   getAllGames, getAllGamesAdmin, getTrashedGames, getGameBySlug, getGameById, insertGame, updateGame, softDeleteGame, restoreGame, permanentDeleteGame,
   getAllAdblue, getAdblueBySlug, upsertAdblue, deleteAdblue, setAdblueLinks, setAdbluePopupTexts,
   createOfferSession, getOfferSession, completeOfferSession, purgeOldOfferSessions, getOfferStats,
+  createContactMessage, markContactMessageEmailed, getContactMessages, setContactMessageHandled, deleteContactMessage, countOpenContactMessages,
   getConfig, setConfig, getAllConfig,
   getAllUsers, deleteUser, getAllReviews, getAllComments, deleteReview, deleteComment,
   findUserByUsername, getReviewCountByGame, getCommentCountByGame,
@@ -878,66 +879,130 @@ Output ONLY valid JSON with exactly these keys: title, greeting, quickLabel, com
   return isValidHelpChatBundle(parsed) ? parsed : null;
 }
 
+// Contact / copyright (DMCA) / privacy messages. Every message is saved to the database first
+// (admin > Messages), then emailed to CONTACT_INBOX when SMTP works. A mail failure no longer loses the message.
+const CONTACT_KINDS = { contact: 'Contact', dmca: 'Copyright (DMCA) notice', privacy: 'Privacy request' };
+const contactRate = new Map(); // ip -> recent submission timestamps
+function contactRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const recent = (contactRate.get(ip) || []).filter((t) => now - t < windowMs);
+  if (recent.length >= 5) { contactRate.set(ip, recent); return true; }
+  recent.push(now);
+  if (contactRate.size > 5000) contactRate.clear();
+  contactRate.set(ip, recent);
+  return false;
+}
+const clipText = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+
 app.post('/api/contact', async (req, res) => {
   try {
-    const { name, email, message } = req.body;
+    const body = req.body || {};
+    // Honeypot field: real visitors never fill it
+    if (body.website) return res.json({ success: true, message: 'Message sent successfully!' });
+
+    const rawName = clipText(body.name, 120);
+    const rawEmail = clipText(body.email, 200);
+    const rawMsg = clipText(body.message, 5000);
+    const kind = Object.prototype.hasOwnProperty.call(CONTACT_KINDS, body.kind) ? body.kind : 'contact';
+    const subject = clipText(body.subject, 200);
+    let detailsObj = null;
+    if (body.details && typeof body.details === 'object' && !Array.isArray(body.details)) {
+      detailsObj = {};
+      Object.keys(body.details).slice(0, 12).forEach((k) => { detailsObj[clipText(k, 40)] = clipText(body.details[k], 2000); });
+    }
 
     // Validation
-    if (!name || !name.trim()) {
+    if (!rawName) {
       return res.status(400).json({ error: 'Name is required' });
     }
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
       return res.status(400).json({ error: 'Valid email is required' });
     }
-    if (!message || message.trim().length < 10) {
+    if (rawMsg.length < 10) {
       return res.status(400).json({ error: 'Message must be at least 10 characters' });
     }
-
-    const rawName = name.trim();
-    const rawEmail = email.trim();
-    const rawMsg = message.trim();
-    const safeName = escapeHtml(rawName);
-    const safeEmail = escapeHtml(rawEmail);
-    const safeMsg = escapeHtml(rawMsg);
-
-    let translatedBlock = '';
-    const translated = await translateContactMessageForInbox(rawMsg);
-    if (translated) {
-      translatedBlock =
-        '<p style="margin:20px 0 8px;font-weight:600;color:#0d9488;">English summary (for support)</p>' +
-        '<div style="background:#f0fdfa;padding:16px;border-radius:8px;border:1px solid #99f6e4;white-space:pre-wrap;font-size:14px;">' +
-        escapeHtml(translated) +
-        '</div>';
+    if (contactRateLimited(getVisitorIp(req))) {
+      return res.status(429).json({ error: 'Too many messages. Please wait a few minutes and try again.' });
     }
 
-    const contactInner =
-      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;line-height:1.5;">' +
-      '<h2 style="color:#0d9488;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px;font-size:20px;">New contact form message</h2>' +
-      '<p style="margin:0 0 8px;"><strong>From:</strong> ' + safeName + '</p>' +
-      '<p style="margin:0 0 16px;"><strong>Reply-to email:</strong> <a href="mailto:' + encodeURIComponent(rawEmail) + '">' + safeEmail + '</a></p>' +
-      '<p style="margin:0 0 8px;font-weight:600;">Message</p>' +
-      '<div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb;white-space:pre-wrap;font-size:15px;">' + safeMsg + '</div>' +
-      translatedBlock +
-      '<hr style="margin:24px 0 16px;border:none;border-top:1px solid #e5e7eb;">' +
-      '<p style="color:#6b7280;font-size:12px;margin:0;">This message was submitted through the ModXnet website contact form.</p>' +
-      '</div>';
-
-    await transporter.sendMail({
-      from: `"ModXnet Contact" <${SMTP_USER}>`,
-      to: CONTACT_INBOX,
-      replyTo: rawEmail,
-      subject: `ModXnet contact: ${rawName}`,
-      html: emailHtmlDocument(contactInner)
+    const saved = createContactMessage.run({
+      kind, name: rawName, email: rawEmail, subject, message: rawMsg,
+      details: detailsObj ? JSON.stringify(detailsObj) : ''
     });
+    const msgId = saved.lastInsertRowid;
+
+    try {
+      const safeName = escapeHtml(rawName);
+      const safeEmail = escapeHtml(rawEmail);
+      const safeMsg = escapeHtml(rawMsg);
+
+      let translatedBlock = '';
+      const translated = await translateContactMessageForInbox(rawMsg);
+      if (translated) {
+        translatedBlock =
+          '<p style="margin:20px 0 8px;font-weight:600;color:#0d9488;">English summary (for support)</p>' +
+          '<div style="background:#f0fdfa;padding:16px;border-radius:8px;border:1px solid #99f6e4;white-space:pre-wrap;font-size:14px;">' +
+          escapeHtml(translated) +
+          '</div>';
+      }
+      let detailsBlock = '';
+      if (detailsObj) {
+        detailsBlock = '<p style="margin:20px 0 8px;font-weight:600;">Details</p>' +
+          Object.keys(detailsObj).map((k) => '<p style="margin:0 0 6px;"><strong>' + escapeHtml(k) + ':</strong> ' + escapeHtml(detailsObj[k]) + '</p>').join('');
+      }
+
+      const contactInner =
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;line-height:1.5;">' +
+        '<h2 style="color:#0d9488;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px;font-size:20px;">New ' + escapeHtml(CONTACT_KINDS[kind]) + ' message</h2>' +
+        '<p style="margin:0 0 8px;"><strong>From:</strong> ' + safeName + '</p>' +
+        '<p style="margin:0 0 8px;"><strong>Reply-to email:</strong> <a href="mailto:' + encodeURIComponent(rawEmail) + '">' + safeEmail + '</a></p>' +
+        (subject ? '<p style="margin:0 0 16px;"><strong>Subject:</strong> ' + escapeHtml(subject) + '</p>' : '') +
+        '<p style="margin:0 0 8px;font-weight:600;">Message</p>' +
+        '<div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb;white-space:pre-wrap;font-size:15px;">' + safeMsg + '</div>' +
+        detailsBlock +
+        translatedBlock +
+        '<hr style="margin:24px 0 16px;border:none;border-top:1px solid #e5e7eb;">' +
+        '<p style="color:#6b7280;font-size:12px;margin:0;">This message was submitted through the ModXnet website (saved as message #' + msgId + ' in admin &gt; Messages).</p>' +
+        '</div>';
+
+      await transporter.sendMail({
+        from: `"ModXnet Contact" <${SMTP_USER}>`,
+        to: CONTACT_INBOX,
+        replyTo: rawEmail,
+        subject: `ModXnet ${CONTACT_KINDS[kind]}: ${rawName}`,
+        html: emailHtmlDocument(contactInner)
+      });
+      markContactMessageEmailed.run(msgId);
+    } catch (mailErr) {
+      console.error('Contact email not sent (message #' + msgId + ' saved in admin):', mailErr.code, mailErr.message);
+    }
 
     res.json({ success: true, message: 'Message sent successfully!' });
   } catch (err) {
-    console.error('Contact email error:', err.code, err.message);
-    let errorMsg = 'Failed to send message. Please try again later.';
-    if (err.code === 'EAUTH') errorMsg = 'Email authentication failed. Please contact the admin.';
-    if (err.code === 'ESOCKET') errorMsg = 'Email server connection failed. Please try again.';
-    res.status(500).json({ error: errorMsg });
+    console.error('Contact form error:', err.code, err.message);
+    res.status(500).json({ error: 'Failed to send message. Please try again later.' });
   }
+});
+
+// Admin: messages from the Contact / DMCA forms
+app.get('/api/admin/messages', requireAdmin, (req, res) => {
+  try { res.json({ items: getContactMessages.all(), open: countOpenContactMessages.get().n }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/messages/:id/handled', requireAdmin, (req, res) => {
+  try {
+    setContactMessageHandled.run({ id: parseInt(req.params.id, 10), handled: req.body && req.body.handled ? 1 : 0 });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/admin/messages/:id', requireAdmin, (req, res) => {
+  try {
+    deleteContactMessage.run(parseInt(req.params.id, 10));
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Download help topics (stored in DB; no chat API)
@@ -2241,7 +2306,7 @@ ${(Array.isArray(features) && features.length > 0 ? features : ['Feature 1 — E
     </main>
 
     <footer class="footer">
-        <div class="footer-bottom"><p>&copy; 2025 <a href="/">modxnet.com</a>. All rights reserved.</p></div>
+        <div class="footer-bottom"><nav class="footer-legal-links" aria-label="Site information" style="display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:0.75rem;line-height:1.6;margin:0 0 6px"><a href="/about" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">About</a><a href="/contact" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">Contact</a><a href="/privacy-policy" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">Privacy Policy</a><a href="/terms-and-conditions" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">Terms</a><a href="/cookie-policy" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">Cookie Policy</a><a href="/dmca" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">DMCA</a><a href="/disclaimer" style="color:var(--text-secondary,#9aa0a6);text-decoration:none">Disclaimer</a></nav><p>&copy; 2025 <a href="/">modxnet.com</a>. All rights reserved.</p></div>
     </footer>
 
     <nav class="bottom-nav">
@@ -3044,6 +3109,21 @@ app.use('/uploads', express.static(uploadDir));
 // ========== STATIC FILES (after all /api routes) ==========
 // ========== SITEMAP (approved 2026-11-25; robots.txt is a static file in the project root) ==========
 // Lists the homepage, /all-games, category pages and every visible game page that exists on disk.
+// Information and legal pages: served as /<name> from <name>.html in the project root.
+const INFO_PAGES = ['about', 'contact', 'privacy-policy', 'terms-and-conditions', 'cookie-policy', 'dmca', 'disclaimer'];
+const INFO_PAGE_REDIRECTS = { 'privacy.html': 'privacy-policy', 'terms.html': 'terms-and-conditions' };
+// One URL per page: /privacy-policy.html -> /privacy-policy, and the old /privacy.html and /terms.html links
+// (login/register modals) -> the new pages. Matches at any folder depth because those modal links are relative.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const m = /^\/(?:[^/]+\/)?([a-z-]+)\.html$/i.exec(req.path);
+  if (!m) return next();
+  const name = m[1].toLowerCase();
+  const target = INFO_PAGE_REDIRECTS[name + '.html'] || (INFO_PAGES.includes(name) && req.path === '/' + name + '.html' ? name : null);
+  if (!target) return next();
+  res.redirect(301, '/' + target);
+});
+
 app.get('/sitemap.xml', (req, res) => {
   try {
     const base = getSiteBaseUrl(req).replace(/\/+$/, '');
@@ -3071,6 +3151,12 @@ app.get('/sitemap.xml', (req, res) => {
       const page = path.join(__dirname, slug, 'index.html');
       if (!fs.existsSync(page)) return;
       add(base + '/' + slug + '/', fileDate(page), 'weekly', '0.9');
+    });
+
+    // Information and legal pages (static files in the project root)
+    INFO_PAGES.forEach(p => {
+      const file = path.join(__dirname, p + '.html');
+      if (fs.existsSync(file)) add(base + '/' + p, fileDate(file), 'yearly', '0.3');
     });
 
     const body = urls.map(u => '  <url>\n    <loc>' + esc(u.loc) + '</loc>\n' +

@@ -41,6 +41,7 @@
         <div class="nav-section-label">Community</div>
         <a href="#" class="nav-item" data-tab="users"><i class="fas fa-users"></i> Users</a>
         <a href="#" class="nav-item" data-tab="reviews"><i class="fas fa-star"></i> Reviews</a>
+        <a href="#" class="nav-item" data-tab="messages"><i class="fas fa-envelope"></i> Messages <span class="trash-count-badge" id="messagesBadge" style="display:none">0</span></a>
       </nav>
       <div class="sidebar-footer">
         <a href="/" class="nav-item"><i class="fas fa-arrow-left"></i> Back to Website</a>
@@ -532,6 +533,19 @@
         <table class="data-table">
           <thead><tr><th>User</th><th>Game</th><th>Stars</th><th>What they said</th><th>Mood</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody id="reviewsBody"></tbody>
+        </table>
+      </section>
+
+      <!-- Tab: Messages (Contact / DMCA / privacy forms) -->
+      <section class="tab-content" id="tab-messages">
+        <div class="tab-header">
+          <h2><i class="fas fa-envelope"></i> Messages</h2>
+          <span class="count-badge" id="messagesCount">0</span>
+        </div>
+        <p style="color:var(--text2);font-size:0.85rem;margin:0 0 12px">Messages from the Contact and DMCA pages and the homepage form. Every message is saved here, even when email delivery fails. Copyright (DMCA) notices should be reviewed and acted on promptly.</p>
+        <table class="data-table">
+          <thead><tr><th>Type</th><th>From</th><th>Message</th><th>Date</th><th>Emailed</th><th>Actions</th></tr></thead>
+          <tbody id="messagesBody"></tbody>
         </table>
       </section>
 

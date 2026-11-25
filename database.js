@@ -250,6 +250,21 @@ db.exec(`
     payout REAL NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_offer_sessions_created ON offer_sessions(created_at);
+
+  -- Contact / copyright (DMCA) / privacy messages from the public forms, readable in admin > Messages
+  CREATE TABLE IF NOT EXISTS contact_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT 'contact',
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL,
+    details TEXT NOT NULL DEFAULT '',
+    emailed INTEGER NOT NULL DEFAULT 0,
+    handled INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);
 `);
 // Global offer feed settings (editable in admin > Ad Config)
 {
@@ -451,6 +466,12 @@ const createOfferSession = db.prepare('INSERT INTO offer_sessions (token, game_s
 const getOfferSession = db.prepare('SELECT * FROM offer_sessions WHERE token = ?');
 const completeOfferSession = db.prepare(`UPDATE offer_sessions SET completed_at = COALESCE(completed_at, datetime('now')), offer_id=@offer_id, offer_name=@offer_name, payout=payout + @payout WHERE token=@token`);
 const purgeOldOfferSessions = db.prepare(`DELETE FROM offer_sessions WHERE completed_at IS NULL AND created_at < datetime('now', '-7 days')`);
+const createContactMessage = db.prepare('INSERT INTO contact_messages (kind, name, email, subject, message, details) VALUES (@kind, @name, @email, @subject, @message, @details)');
+const markContactMessageEmailed = db.prepare('UPDATE contact_messages SET emailed = 1 WHERE id = ?');
+const getContactMessages = db.prepare('SELECT * FROM contact_messages ORDER BY handled ASC, id DESC LIMIT 500');
+const setContactMessageHandled = db.prepare('UPDATE contact_messages SET handled = @handled WHERE id = @id');
+const deleteContactMessage = db.prepare('DELETE FROM contact_messages WHERE id = ?');
+const countOpenContactMessages = db.prepare('SELECT COUNT(*) AS n FROM contact_messages WHERE handled = 0');
 const getOfferStats = db.prepare(`SELECT COUNT(*) AS sessions, SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS completed, COALESCE(SUM(payout), 0) AS payout FROM offer_sessions WHERE created_at >= datetime('now', '-30 days')`);
 
 // ========== SITE CONFIG HELPERS ==========
@@ -515,6 +536,13 @@ module.exports = {
   completeOfferSession,
   purgeOldOfferSessions,
   getOfferStats,
+  // Contact / DMCA messages
+  createContactMessage,
+  markContactMessageEmailed,
+  getContactMessages,
+  setContactMessageHandled,
+  deleteContactMessage,
+  countOpenContactMessages,
   // Admin - Config
   getConfig,
   setConfig,

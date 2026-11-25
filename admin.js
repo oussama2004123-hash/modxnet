@@ -59,7 +59,7 @@
   }
 
   // ===== TAB NAVIGATION =====
-  var tabTitles = { dashboard:'Home', games:'Games', trash:'Trash', adblue:'Ad Config', users:'Users', reviews:'Reviews' };
+  var tabTitles = { dashboard:'Home', games:'Games', trash:'Trash', adblue:'Ad Config', users:'Users', reviews:'Reviews', messages:'Messages' };
 
   window.switchTab = function(tab) {
     document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
@@ -75,6 +75,7 @@
     else if (tab === 'adblue') loadAdblue();
     else if (tab === 'users') loadUsers();
     else if (tab === 'reviews') loadReviews();
+    else if (tab === 'messages') loadMessages();
     $('sidebar').classList.remove('open');
   };
 
@@ -1601,6 +1602,62 @@
     if (!confirm('Delete this review?')) return;
     api('/api/admin/reviews/' + id, { method: 'DELETE' }).then(function() { toast('Review removed'); loadReviews(); });
   };
+
+  // ===== MESSAGES (Contact / DMCA / privacy forms) =====
+  var MESSAGE_KIND_LABELS = { contact: 'Contact', dmca: 'Copyright (DMCA)', privacy: 'Privacy request' };
+
+  function renderMessagesBadge(open) {
+    var b = $('messagesBadge');
+    if (!b) return;
+    b.textContent = open;
+    b.style.display = open > 0 ? '' : 'none';
+  }
+
+  async function loadMessages() {
+    try {
+      var data = await api('/api/admin/messages');
+      var items = data.items || [];
+      $('messagesCount').textContent = items.length;
+      renderMessagesBadge(data.open || 0);
+      var html = '';
+      items.forEach(function(m) {
+        var details = '';
+        if (m.details) {
+          try {
+            var d = JSON.parse(m.details);
+            details = Object.keys(d).map(function(k) { return '<div style="font-size:0.8rem;color:var(--text2)"><strong>' + escHtml(k) + ':</strong> ' + escHtml(d[k]) + '</div>'; }).join('');
+          } catch (e) {}
+        }
+        html += '<tr' + (m.handled ? ' style="opacity:0.55"' : '') + '>' +
+          '<td style="font-size:0.82rem">' + escHtml(MESSAGE_KIND_LABELS[m.kind] || m.kind) + '</td>' +
+          '<td><strong>' + escHtml(m.name) + '</strong><div style="font-size:0.8rem"><a style="color:var(--text2)" href="mailto:' + escAttr(m.email) + '">' + escHtml(m.email) + '</a></div></td>' +
+          '<td style="max-width:420px;white-space:pre-wrap;word-break:break-word">' + (m.subject ? '<strong>' + escHtml(m.subject) + '</strong>\n' : '') + escHtml(m.message) + details + '</td>' +
+          '<td style="font-size:0.78rem;color:var(--text3)">' + formatDate(m.created_at) + '</td>' +
+          '<td style="font-size:0.8rem">' + (m.emailed ? 'Yes' : 'No') + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="danger-btn" style="background:transparent;color:var(--text2)" title="' + (m.handled ? 'Mark as open' : 'Mark as handled') + '" onclick="toggleMessageHandled(' + m.id + ',' + (m.handled ? 0 : 1) + ')"><i class="fas ' + (m.handled ? 'fa-undo' : 'fa-check') + '"></i></button> ' +
+            '<button class="danger-btn" title="Delete" onclick="removeMessage(' + m.id + ')"><i class="fas fa-trash"></i></button>' +
+          '</td>' +
+        '</tr>';
+      });
+      $('messagesBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:30px">No messages yet</td></tr>';
+    } catch (e) {}
+  }
+
+  window.toggleMessageHandled = function(id, handled) {
+    api('/api/admin/messages/' + id + '/handled', { method: 'POST', body: JSON.stringify({ handled: !!handled }) }).then(function() { loadMessages(); });
+  };
+
+  window.removeMessage = function(id) {
+    if (!confirm('Delete this message? This cannot be undone.')) return;
+    api('/api/admin/messages/' + id, { method: 'DELETE' }).then(function() { toast('Message deleted'); loadMessages(); });
+  };
+
+  // Show the open-message count in the sidebar after sign-in
+  setTimeout(function() {
+    fetch('/api/admin/messages', { credentials: 'same-origin' }).then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { if (d) renderMessagesBadge(d.open || 0); }).catch(function() {});
+  }, 1500);
 
   // ===== BROADCAST EMAIL (all users, editable templates) =====
   var comebackModal = $('comebackEmailModal');
