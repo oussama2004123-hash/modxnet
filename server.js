@@ -772,32 +772,6 @@ async function sendWelcomeEmailIfNeeded(userId) {
   }
 }
 
-/** Translate contact message to professional English for the inbox (server-side only). */
-async function translateContactMessageForInbox(text) {
-  if (!DEEPSEEK_API_KEY || !text) return null;
-  try {
-    const prompt = `You are assisting ModXnet support. Translate the following customer message into clear, professional English.
-Output ONLY the translated text. No quotes or notes. Preserve names, emails, and URLs exactly as given.\n\n${String(text).slice(0, 8000)}`;
-    const aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DEEPSEEK_API_KEY },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        max_tokens: 4000
-      })
-    });
-    if (!aiRes.ok) return null;
-    const aiData = await aiRes.json();
-    const out = (aiData.choices?.[0]?.message?.content || '').trim();
-    return out || null;
-  } catch (err) {
-    console.error('Contact translation (DeepSeek):', err.message);
-    return null;
-  }
-}
-
 /** English bundle for help chat — keep in sync with HELP_CHAT_EN in script.js */
 const HELP_CHAT_EN_BUNDLE = {
   title: 'Download helper',
@@ -947,15 +921,6 @@ app.post('/api/contact', async (req, res) => {
       const safeEmail = escapeHtml(rawEmail);
       const safeMsg = escapeHtml(rawMsg);
 
-      let translatedBlock = '';
-      const translated = await translateContactMessageForInbox(rawMsg);
-      if (translated) {
-        translatedBlock =
-          '<p style="margin:20px 0 8px;font-weight:600;color:#0d9488;">English summary (for support)</p>' +
-          '<div style="background:#f0fdfa;padding:16px;border-radius:8px;border:1px solid #99f6e4;white-space:pre-wrap;font-size:14px;">' +
-          escapeHtml(translated) +
-          '</div>';
-      }
       let detailsBlock = '';
       if (detailsObj) {
         detailsBlock = '<p style="margin:20px 0 8px;font-weight:600;">Details</p>' +
@@ -971,7 +936,6 @@ app.post('/api/contact', async (req, res) => {
         '<p style="margin:0 0 8px;font-weight:600;">Message</p>' +
         '<div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb;white-space:pre-wrap;font-size:15px;">' + safeMsg + '</div>' +
         detailsBlock +
-        translatedBlock +
         '<hr style="margin:24px 0 16px;border:none;border-top:1px solid #e5e7eb;">' +
         '<p style="color:#6b7280;font-size:12px;margin:0;">This message was submitted through the ModXnet website (saved as message #' + msgId + ' in admin &gt; Messages).</p>' +
         '</div>';
