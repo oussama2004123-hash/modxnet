@@ -3161,8 +3161,12 @@ app.use((req, res, next) => {
   if (!m) return next();
   const file = m[2].toLowerCase();
   if (BROKEN_LINK_REDIRECTS[file]) return res.redirect(301, BROKEN_LINK_REDIRECTS[file]);
-  // /index.html and /<game>/index.html duplicate the real URL
-  if (file === 'index.html') return res.redirect(301, m[1] ? '/' + m[1] + '/' : '/');
+  // /index.html and /<game>/index.html duplicate the real URL (relative "index.html" links elsewhere,
+  // e.g. on /category/racing, mean the homepage)
+  if (file === 'index.html') {
+    const gameSlug = m[1] && visibleGameSlugMap()[m[1].toLowerCase()];
+    return res.redirect(301, gameSlug ? '/' + gameSlug + '/' : '/');
+  }
   next();
 });
 
