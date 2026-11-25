@@ -249,6 +249,16 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWA
 // Trust reverse proxy (Cloudflare, Nginx, Railway) for correct req.protocol and client IP
 app.set('trust proxy', 1);
 
+// SEO: one host. www.modxnet.com -> modxnet.com (301) for page/asset requests.
+// /api/* is never redirected, so offer postbacks, Google sign-in callbacks and form posts keep working on any host.
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '').toLowerCase();
+  if (!host.startsWith('www.')) return next();
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api/') || req.path === '/api') return next();
+  res.redirect(301, 'https://' + host.slice(4) + req.originalUrl);
+});
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
@@ -3124,6 +3134,79 @@ app.use((req, res, next) => {
   res.redirect(301, '/' + target);
 });
 
+// ========== TECHNICAL SEO: noindex for private/utility URLs, fixes for broken internal links ==========
+// Keep private and utility URLs out of search results (header only; pages themselves are unchanged).
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  if (p.startsWith('/api/') || p === '/admin' || p.startsWith('/admin.') || p.startsWith('/admin/') ||
+      p === '/instagram.html' || p === '/tiktok.html') {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+  }
+  next();
+});
+
+// Links in the existing menus/footers that point to pages which never existed. They used to show the
+// homepage with status 200 (soft 404); now they 301 to the closest real page. Matches at any folder depth
+// because some of these links are relative (e.g. /GTA-5-Mobile/trending.html).
+const BROKEN_LINK_REDIRECTS = {
+  'trending.html': '/all-games',
+  'games.html': '/all-games',
+  'all-games.html': '/all-games',
+  'blog.html': '/#gameNews',
+  'forgot-password.html': '/'
+};
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const m = /^\/(?:([^/]+)\/)?([a-z-]+\.html)$/i.exec(req.path);
+  if (!m) return next();
+  const file = m[2].toLowerCase();
+  if (BROKEN_LINK_REDIRECTS[file]) return res.redirect(301, BROKEN_LINK_REDIRECTS[file]);
+  // /index.html and /<game>/index.html duplicate the real URL
+  if (file === 'index.html') return res.redirect(301, m[1] ? '/' + m[1] + '/' : '/');
+  next();
+});
+
+// Game page URL variants -> the one canonical URL /<Slug>/ (301):
+// missing trailing slash (/GTA-5-Mobile breaks the page's relative CSS), wrong letter case,
+// and two old duplicate folders that have no game record.
+const LEGACY_GAME_FOLDERS = {
+  'rooftops-alleys-the-parkour-game-mobile': 'Rooftops-Alleys-Mobile',
+  'snowrunner-itch-mobile': 'SnowRunner-Mobile'
+};
+let gameSlugCache = { at: 0, map: null };
+function visibleGameSlugMap() {
+  if (gameSlugCache.map && Date.now() - gameSlugCache.at < 60000) return gameSlugCache.map;
+  const map = {};
+  try {
+    (getAllGames.all() || []).forEach(g => {
+      const slug = String(g.slug || '');
+      if (/^[A-Za-z0-9_-]+$/.test(slug) && fs.existsSync(path.join(__dirname, slug, 'index.html'))) map[slug.toLowerCase()] = slug;
+    });
+  } catch (e) {}
+  gameSlugCache = { at: Date.now(), map };
+  return map;
+}
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const m = /^\/([A-Za-z0-9_-]+)(\/?)$/.exec(req.path);
+  if (!m) return next();
+  const key = m[1].toLowerCase();
+  const slug = visibleGameSlugMap()[key] || LEGACY_GAME_FOLDERS[key];
+  if (!slug || (m[1] === slug && m[2] === '/')) return next();
+  const qs = req.originalUrl.indexOf('?') >= 0 ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(301, '/' + slug + '/' + qs);
+});
+
+// Category words that really exist (same rule as the sitemap). Anything else is a 404.
+function validCategorySet() {
+  const cats = new Set();
+  (getAllGames.all() || []).forEach(g => String(g.category || '').toLowerCase().split(/\s+/).forEach(w => {
+    const c = w.replace(/[^a-z0-9_-]/g, '');
+    if (c) cats.add(c);
+  }));
+  return cats;
+}
+
 app.get('/sitemap.xml', (req, res) => {
   try {
     const base = getSiteBaseUrl(req).replace(/\/+$/, '');
@@ -3201,6 +3284,9 @@ app.get('/category/:category', (req, res, next) => {
     html = injectGameCards(html);
     const year = new Date().getFullYear();
     const cat = String(req.params.category || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    // Only real categories are pages; others fall through to the 404 handler. /category/Racing -> /category/racing
+    if (!cat || !validCategorySet().has(cat)) return next();
+    if (req.params.category !== cat) return res.redirect(301, '/category/' + cat);
     const { db } = require('./database');
     const matches = db.prepare(`SELECT title FROM games WHERE visible = 1 AND deleted_at IS NULL AND lower(category) LIKE ? ORDER BY sort_order ASC LIMIT 8`).all('%' + cat + '%');
     const titles = matches.map(r => r.title).filter(Boolean);
@@ -3280,16 +3366,22 @@ app.use(express.static(path.join(__dirname), {
   index: false
 }));
 
-// SPA fallback: index.html for non-API routes only. Never override /api/*.
-// Uses app.use instead of app.get('*') for Express 5 / path-to-regexp compatibility
+// Not found: pages that don't exist get a real 404 status (no more soft 404s in Search Console).
+// Visitors still see the normal homepage layout, marked noindex. Missing files (images, scripts) get a plain 404.
+// Never override /api/*. Uses app.use instead of app.get('*') for Express 5 / path-to-regexp compatibility
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) return next();
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  res.set('Cache-Control', 'no-store');
+  if (/\.[a-z0-9]{1,8}$/i.test(req.path) && !/\.html?$/i.test(req.path)) {
+    return res.status(404).type('text/plain').send('Not found');
+  }
   try {
     const filePath = path.join(__dirname, 'index.html');
     let html = fs.readFileSync(filePath, 'utf8');
     html = injectGameCards(html);
-    res.set('Cache-Control', 'no-store');
-    res.type('html').send(html);
+    html = html.replace(/<head>/i, '<head>\n<meta name="robots" content="noindex, follow">');
+    res.status(404).type('html').send(html);
   } catch (e) {
     res.sendFile(path.join(__dirname, 'index.html'), (err) => {
       if (err) next(err);
