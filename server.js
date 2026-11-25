@@ -2128,6 +2128,13 @@ app.post('/api/admin/gamepages', requireAdmin, (req, res) => {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-M7JMN9D2');</script>
+<!-- End Google Tag Manager -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <meta name="description" content="${description ? description.replace(/"/g, '&quot;') : 'Download ' + gameTitle + ' - modxnet.com'}">
@@ -2142,6 +2149,10 @@ app.post('/api/admin/gamepages', requireAdmin, (req, res) => {
     </style>
 </head>
 <body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-M7JMN9D2"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
     <header class="header">
         <div class="header-content">
             <a href="/" class="back-icon"><i class="fas fa-arrow-left"></i></a>
@@ -3027,6 +3038,47 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 app.use('/uploads', express.static(uploadDir));
 
 // ========== STATIC FILES (after all /api routes) ==========
+// ========== SITEMAP (approved 2026-11-25; robots.txt is managed by Cloudflare) ==========
+// Lists the homepage, /all-games, category pages and every visible game page that exists on disk.
+app.get('/sitemap.xml', (req, res) => {
+  try {
+    const base = getSiteBaseUrl(req).replace(/\/+$/, '');
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const day = (d) => new Date(d).toISOString().slice(0, 10);
+    const fileDate = (p) => { try { return day(fs.statSync(p).mtime); } catch (e) { return null; } };
+    const urls = [];
+    const add = (loc, lastmod, changefreq, priority) => urls.push({ loc, lastmod, changefreq, priority });
+
+    const games = getAllGames.all() || [];
+    add(base + '/', fileDate(path.join(__dirname, 'index.html')), 'daily', '1.0');
+    add(base + '/all-games', fileDate(path.join(__dirname, 'all-games.html')), 'daily', '0.8');
+
+    // Category pages use single words, e.g. /category/racing (matches the homepage filters)
+    const cats = new Set();
+    games.forEach(g => String(g.category || '').toLowerCase().split(/\s+/).forEach(w => {
+      const c = w.replace(/[^a-z0-9_-]/g, '');
+      if (c) cats.add(c);
+    }));
+    [...cats].sort().forEach(c => add(base + '/category/' + c, null, 'weekly', '0.6'));
+
+    games.forEach(g => {
+      const slug = String(g.slug || '');
+      if (!/^[A-Za-z0-9_-]+$/.test(slug)) return;
+      const page = path.join(__dirname, slug, 'index.html');
+      if (!fs.existsSync(page)) return;
+      add(base + '/' + slug + '/', fileDate(page), 'weekly', '0.9');
+    });
+
+    const body = urls.map(u => '  <url>\n    <loc>' + esc(u.loc) + '</loc>\n' +
+      (u.lastmod ? '    <lastmod>' + u.lastmod + '</lastmod>\n' : '') +
+      '    <changefreq>' + u.changefreq + '</changefreq>\n    <priority>' + u.priority + '</priority>\n  </url>').join('\n');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + body + '\n</urlset>\n');
+  } catch (err) {
+    res.status(500).type('text/plain').send('sitemap error');
+  }
+});
+
 // ========== SEO HTML ROUTES (must be before static files) ==========
 
 app.get('/', (req, res, next) => {

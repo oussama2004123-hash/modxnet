@@ -22,6 +22,16 @@
     };
     var els = {};
 
+    /** Analytics: push an event for Google Tag Manager (GTM-M7JMN9D2 sends these to GA4). Never throws. */
+    function track(name, extra) {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            var ev = { event: name, game: slug, platform: state.platform, offer_id: undefined, offer_name: undefined };
+            if (extra) Object.keys(extra).forEach(function (k) { ev[k] = extra[k]; });
+            window.dataLayer.push(ev);
+        } catch (e) {}
+    }
+
     // Popup text comes from Admin > Ad Config (/api/offers-config/<game>). These are only
     // a fallback for when that request fails; keep them in sync with POPUP_TEXT_DEFAULTS in server.js.
     var texts = {
@@ -366,6 +376,7 @@
             a.addEventListener('click', function () {
                 a.classList.add('ow-clicked');
                 state.clicked = true;
+                track('offer_click', { offer_id: o.id, offer_name: o.name || o.anchor });
                 setMsg(t('after_click'));
                 startPolling();
             });
@@ -413,6 +424,8 @@
             setMsg(t('link_missing'), 'ow-warn');
         } else if (justCompleted && !state.autoStarted) {
             state.autoStarted = true;
+            track('offer_completed');
+            track('game_download');
             setMsg(t('download_starting'), 'ow-ok');
             setTimeout(function () { window.location.href = link; }, 900);
         } else if (!state.unlocked[want]) {
@@ -439,6 +452,7 @@
                 return;
             }
             setDlBusy(t('starting_button'));
+            track('game_download');
             setTimeout(function () {
                 window.location.href = link;
                 setTimeout(function () { setDlBusy(false); }, 2500);
@@ -446,6 +460,7 @@
             return;
         }
         // Short loading state, then show the steps and offers (waits for the feed if it is still loading)
+        track('offer_wall_download_click');
         setDlBusy(t('loading_button'));
         var started = Date.now();
         (function waitForOffers() {
@@ -525,6 +540,7 @@
 
     function show(platform) {
         state.platform = platform === 'ios' ? 'ios' : 'android';
+        track('download_button_click');
         configReady.then(function () { open(); });
     }
 
