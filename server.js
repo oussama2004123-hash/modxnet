@@ -2128,6 +2128,10 @@ app.post('/api/admin/gamepages', requireAdmin, (req, res) => {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Consent defaults: no analytics cookies for EEA/UK/CH visitors (cookieless pings only) -->
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+gtag('consent','default',{analytics_storage:'denied',region:['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE','GB','CH']});
+gtag('consent','default',{analytics_storage:'granted'});</script>
 <!-- Google Tag Manager -->
 <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],

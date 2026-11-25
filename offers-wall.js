@@ -18,9 +18,16 @@
     var state = {
         platform: 'android', token: null, open: false, pollTimer: null, pollStarted: 0,
         loading: false, unlocked: null, clicked: false, revealed: false, offers: null,
-        error: null, impressionsSent: false, autoStarted: false
+        error: null, impressionsSent: false, autoStarted: false, downloadTracked: false
     };
     var els = {};
+
+    /** game_download is a key event: count it at most once per page view */
+    function trackDownloadOnce() {
+        if (state.downloadTracked) return;
+        state.downloadTracked = true;
+        track('game_download');
+    }
 
     /** Analytics: push an event for Google Tag Manager (GTM-M7JMN9D2 sends these to GA4). Never throws. */
     function track(name, extra) {
@@ -425,7 +432,7 @@
         } else if (justCompleted && !state.autoStarted) {
             state.autoStarted = true;
             track('offer_completed');
-            track('game_download');
+            trackDownloadOnce();
             setMsg(t('download_starting'), 'ow-ok');
             setTimeout(function () { window.location.href = link; }, 900);
         } else if (!state.unlocked[want]) {
@@ -452,7 +459,7 @@
                 return;
             }
             setDlBusy(t('starting_button'));
-            track('game_download');
+            trackDownloadOnce();
             setTimeout(function () {
                 window.location.href = link;
                 setTimeout(function () { setDlBusy(false); }, 2500);
