@@ -3139,7 +3139,10 @@ app.use((req, res, next) => {
 // and two old duplicate folders that have no game record.
 const LEGACY_GAME_FOLDERS = {
   'rooftops-alleys-the-parkour-game-mobile': 'Rooftops-Alleys-Mobile',
-  'snowrunner-itch-mobile': 'SnowRunner-Mobile'
+  'snowrunner-itch-mobile': 'SnowRunner-Mobile',
+  // Older addresses Google still has on record (Search Console, Nov 2026)
+  'euro-truck-simulator': 'ETS-2-Mobile',
+  'assetto': 'Assetto-Corsa-Mobile'
 };
 let gameSlugCache = { at: 0, map: null };
 function visibleGameSlugMap() {
@@ -3270,6 +3273,15 @@ app.get('/category/:category', (req, res, next) => {
   } catch (e) {
     next();
   }
+});
+
+// /All-Games, /all-games/ etc. -> /all-games (Express matches routes case-insensitively, which made duplicates)
+app.use((req, res, next) => {
+  if ((req.method === 'GET' || req.method === 'HEAD') && /^\/all-games\/?$/i.test(req.path) && req.path !== '/all-games') {
+    const qs = req.originalUrl.indexOf('?') >= 0 ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    return res.redirect(301, '/all-games' + qs);
+  }
+  next();
 });
 
 app.get('/all-games', (req, res, next) => {
